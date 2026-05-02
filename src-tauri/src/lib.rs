@@ -1,6 +1,7 @@
 mod commands;
 mod llm;
 mod models;
+mod providers;
 mod tools;
 
 use commands::AppState;

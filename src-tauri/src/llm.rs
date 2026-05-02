@@ -1,34 +1,60 @@
 use crate::models::*;
+use crate::providers::provider_from_id;
 use futures_util::StreamExt;
 use reqwest::Client;
 
-/// LLM client for Anthropic Messages API
+/// Provider-aware LLM client.
 pub struct LlmClient {
     client: Client,
+    provider_id: String,
     api_key: String,
     api_endpoint: String,
     model: String,
 }
 
 impl LlmClient {
-    pub fn new(api_key: &str, api_endpoint: &str, model: &str) -> Self {
+    pub fn new(provider_id: &str, api_key: &str, api_endpoint: &str, model: &str) -> Self {
         Self {
             client: Client::new(),
+            provider_id: provider_id.to_string(),
             api_key: api_key.to_string(),
             api_endpoint: api_endpoint.to_string(),
             model: model.to_string(),
         }
     }
 
-    /// List models available to the configured Anthropic API key.
+    /// List models available to the configured provider/API key.
     pub async fn list_models(&self) -> Result<Vec<ModelInfo>, String> {
-        let url = format!("{}/v1/models?limit=1000", self.api_endpoint.trim_end_matches('/'));
+        let provider = provider_from_id(&self.provider_id)?;
+        if self.provider_id == "deepseek" {
+            return Ok(vec![
+                ModelInfo {
+                    id: "deepseek-chat".to_string(),
+                    display_name: "DeepSeek Chat".to_string(),
+                    created_at: String::new(),
+                    model_type: "deepseek".to_string(),
+                },
+                ModelInfo {
+                    id: "deepseek-reasoner".to_string(),
+                    display_name: "DeepSeek Reasoner".to_string(),
+                    created_at: String::new(),
+                    model_type: "deepseek".to_string(),
+                },
+            ]);
+        }
+        let url = format!(
+            "{}{}",
+            self.api_endpoint.trim_end_matches('/'),
+            provider.models_path()
+        );
+        let (auth_name, auth_value) = provider.auth_header(&self.api_key);
 
-        let response = self
-            .client
-            .get(&url)
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", "2023-06-01")
+        let mut request = self.client.get(&url).header(auth_name, auth_value);
+        for (name, value) in provider.extra_headers() {
+            request = request.header(name, value);
+        }
+
+        let response = request
             .send()
             .await
             .map_err(|e| format!("Network error: {}", e))?;
@@ -39,37 +65,41 @@ impl LlmClient {
             return Err(format!("API error ({}): {}", status, body));
         }
 
-        let models = response
-            .json::<ModelsResponse>()
+        let body = response
+            .text()
             .await
-            .map_err(|e| format!("Failed to parse models response: {}", e))?;
+            .map_err(|e| format!("Failed to read models response: {}", e))?;
 
-        Ok(models.data)
+        provider.parse_models_response(&body)
     }
 
-    /// Send a streaming request to Anthropic Messages API
+    /// Send a streaming request to the active provider.
     pub async fn stream_chat(
         &self,
         messages: Vec<ChatMessage>,
         mut on_delta: impl FnMut(String),
         mut on_error: impl FnMut(String),
     ) -> Result<String, String> {
-        let url = format!("{}/v1/messages", self.api_endpoint);
+        let provider = provider_from_id(&self.provider_id)?;
+        let url = format!(
+            "{}{}",
+            self.api_endpoint.trim_end_matches('/'),
+            provider.chat_path()
+        );
+        let request_body = provider.build_chat_request(&self.model, &messages);
+        let (auth_name, auth_value) = provider.auth_header(&self.api_key);
 
-        let request_body = AnthropicRequest {
-            model: self.model.clone(),
-            max_tokens: 4096,
-            messages,
-            stream: true,
-        };
-
-        let response = self
+        let mut request = self
             .client
             .post(&url)
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", "2023-06-01")
+            .header(auth_name, auth_value)
             .header("content-type", "application/json")
-            .json(&request_body)
+            .json(&request_body);
+        for (name, value) in provider.extra_headers() {
+            request = request.header(name, value);
+        }
+
+        let response = request
             .send()
             .await
             .map_err(|e| format!("Network error: {}", e))?;
@@ -98,22 +128,19 @@ impl LlmClient {
                 // Parse SSE event
                 for line in event_text.lines() {
                     if let Some(data) = line.strip_prefix("data: ") {
-                        if let Ok(event) = serde_json::from_str::<StreamEvent>(data) {
-                            match event {
-                                StreamEvent::ContentBlockDelta { delta, .. } => {
-                                    if delta.delta_type == "text_delta" {
-                                        full_content.push_str(&delta.text);
-                                        on_delta(delta.text);
-                                    }
-                                }
-                                StreamEvent::Error { error } => {
-                                    on_error(format!("{}: {}", error.error_type, error.message));
-                                    return Err(error.message);
-                                }
-                                StreamEvent::MessageStop => {
+                        match provider.parse_stream_data(data) {
+                            Ok(Some(delta)) => {
+                                full_content.push_str(&delta);
+                                on_delta(delta);
+                            }
+                            Ok(None) => {
+                                if data.trim() == "[DONE]" {
                                     return Ok(full_content);
                                 }
-                                _ => {}
+                            }
+                            Err(error) => {
+                                on_error(error.clone());
+                                return Err(error);
                             }
                         }
                     }

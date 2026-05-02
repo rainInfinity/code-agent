@@ -11,6 +11,8 @@ import { ChatPanel } from '@/components/Chat/ChatPanel';
 import { SettingsModal } from '@/components/common/SettingsModal';
 import { ApiConfigBanner } from '@/components/common/ApiConfigBanner';
 import { loadSettings } from '@/hooks/useIpc';
+import { PROVIDER_IDS, createDefaultProviderSettings, getProvider } from '@/config/providers';
+import type { ProviderId, ProviderSettings } from '@/types';
 
 const App: React.FC = () => {
   const themeMode = useSettingsStore((s) => s.theme);
@@ -19,11 +21,33 @@ const App: React.FC = () => {
 
   useEffect(() => {
     loadSettings()
-      .then((settings) => {
+      .then((loaded) => {
+        const providers = PROVIDER_IDS.reduce(
+          (acc, id) => {
+            const provider = loaded.providers[id];
+            acc[id] = {
+              ...createDefaultProviderSettings(id),
+              apiEndpoint: provider?.apiEndpoint ?? createDefaultProviderSettings(id).apiEndpoint,
+              model: provider?.model ?? createDefaultProviderSettings(id).model,
+              apiKey: '',
+            };
+            return acc;
+          },
+          {} as Record<ProviderId, ProviderSettings>,
+        );
+        const apiKeyConfigured = PROVIDER_IDS.reduce(
+          (acc, id) => {
+            acc[id] = Boolean(loaded.providers[id]?.hasApiKey);
+            return acc;
+          },
+          {} as Record<ProviderId, boolean>,
+        );
         useSettingsStore.setState({
-          apiEndpoint: settings.apiEndpoint,
-          model: settings.model,
-          apiKeyConfigured: settings.hasApiKey,
+          activeProviderId: loaded.activeProviderId,
+          providers,
+          activeProviderSettings: providers[loaded.activeProviderId],
+          activeProviderDefinition: getProvider(loaded.activeProviderId),
+          apiKeyConfigured,
         });
       })
       .catch(() => {

@@ -1,6 +1,7 @@
 use crate::llm::LlmClient;
 use crate::models::*;
-use serde::{Deserialize, Serialize};
+use crate::providers::{built_in_provider_ids, default_endpoint, default_model};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -8,37 +9,20 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 const SETTINGS_FILE: &str = "settings.json";
 
-#[derive(Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PersistedSettings {
-    api_key: String,
-    api_endpoint: String,
-    model: String,
-}
-
 /// Application state holding settings
 pub struct AppState {
-    pub api_key: Mutex<String>,
-    pub api_endpoint: Mutex<String>,
-    pub model: Mutex<String>,
+    pub active_provider_id: Mutex<String>,
+    pub provider_settings: Mutex<HashMap<String, ProviderSettings>>,
 }
 
 impl AppState {
     pub fn new(app: &AppHandle) -> Self {
-        let saved = read_settings(app).unwrap_or_default();
+        let mut saved = read_settings(app).unwrap_or_default();
+        normalize_settings(&mut saved);
 
         Self {
-            api_key: Mutex::new(saved.api_key),
-            api_endpoint: Mutex::new(if saved.api_endpoint.trim().is_empty() {
-                "https://api.anthropic.com".to_string()
-            } else {
-                saved.api_endpoint
-            }),
-            model: Mutex::new(if saved.model.trim().is_empty() {
-                "claude-haiku-4-5-20251001".to_string()
-            } else {
-                saved.model
-            }),
+            active_provider_id: Mutex::new(saved.active_provider_id),
+            provider_settings: Mutex::new(saved.providers),
         }
     }
 }
@@ -50,15 +34,29 @@ pub async fn send_message(
     state: State<'_, AppState>,
     payload: SendMessagePayload,
 ) -> Result<(), String> {
-    let api_key = state.api_key.lock().unwrap().clone();
-    let api_endpoint = state.api_endpoint.lock().unwrap().clone();
-    let model = state.model.lock().unwrap().clone();
+    let provider_id = if payload.provider_id.trim().is_empty() {
+        state.active_provider_id.lock().unwrap().clone()
+    } else {
+        payload.provider_id.clone()
+    };
+    let settings = {
+        let provider_settings = state.provider_settings.lock().unwrap();
+        provider_settings
+            .get(&provider_id)
+            .cloned()
+            .unwrap_or_else(|| default_provider_settings(&provider_id))
+    };
 
-    if api_key.is_empty() {
+    if settings.api_key.is_empty() {
         return Err("API key not configured. Please set your API key in Settings.".to_string());
     }
 
-    let client = LlmClient::new(&api_key, &api_endpoint, &model);
+    let client = LlmClient::new(
+        &provider_id,
+        &settings.api_key,
+        &settings.api_endpoint,
+        &settings.model,
+    );
 
     let conversation_id = payload.conversation_id.clone();
     let message_id = payload.assistant_message_id.clone();
@@ -137,35 +135,62 @@ pub async fn save_settings(
     state: State<'_, AppState>,
     settings: SettingsPayload,
 ) -> Result<(), String> {
-    if !settings.api_key.trim().is_empty() {
-        *state.api_key.lock().unwrap() = settings.api_key;
-    }
-    *state.api_endpoint.lock().unwrap() = settings.api_endpoint;
-    *state.model.lock().unwrap() = settings.model;
+    let provider_id = settings.provider_id.clone();
+    *state.active_provider_id.lock().unwrap() = provider_id.clone();
 
-    write_settings(
-        &app,
-        &PersistedSettings {
-            api_key: state.api_key.lock().unwrap().clone(),
-            api_endpoint: state.api_endpoint.lock().unwrap().clone(),
-            model: state.model.lock().unwrap().clone(),
+    let mut provider_settings = state.provider_settings.lock().unwrap();
+    let existing = provider_settings
+        .get(&provider_id)
+        .cloned()
+        .unwrap_or_else(|| default_provider_settings(&provider_id));
+    let next = ProviderSettings {
+        api_key: if settings.api_key.trim().is_empty() {
+            existing.api_key
+        } else {
+            settings.api_key
         },
-    )?;
+        api_endpoint: settings.api_endpoint,
+        model: settings.model,
+    };
+    provider_settings.insert(provider_id.clone(), next);
+
+    let persisted = PersistedSettings {
+        active_provider_id: provider_id,
+        providers: provider_settings.clone(),
+    };
+    drop(provider_settings);
+
+    write_settings(&app, &persisted)?;
 
     Ok(())
 }
 
-/// Load settings (without exposing API key)
+/// Load settings (without exposing API keys)
 #[tauri::command]
 pub async fn load_settings(state: State<'_, AppState>) -> Result<SettingsResponse, String> {
-    let api_key = state.api_key.lock().unwrap();
-    let api_endpoint = state.api_endpoint.lock().unwrap();
-    let model = state.model.lock().unwrap();
+    let active_provider_id = state.active_provider_id.lock().unwrap().clone();
+    let provider_settings = state.provider_settings.lock().unwrap();
+    let providers = built_in_provider_ids()
+        .into_iter()
+        .map(|id| {
+            let settings = provider_settings
+                .get(id)
+                .cloned()
+                .unwrap_or_else(|| default_provider_settings(id));
+            (
+                id.to_string(),
+                ProviderSettingsSummary {
+                    api_endpoint: settings.api_endpoint,
+                    model: settings.model,
+                    has_api_key: !settings.api_key.is_empty(),
+                },
+            )
+        })
+        .collect();
 
     Ok(SettingsResponse {
-        api_endpoint: api_endpoint.clone(),
-        model: model.clone(),
-        has_api_key: !api_key.is_empty(),
+        active_provider_id,
+        providers,
     })
 }
 
@@ -175,8 +200,21 @@ pub async fn list_models(
     state: State<'_, AppState>,
     payload: ListModelsPayload,
 ) -> Result<Vec<ModelInfo>, String> {
+    let provider_id = if payload.provider_id.trim().is_empty() {
+        state.active_provider_id.lock().unwrap().clone()
+    } else {
+        payload.provider_id
+    };
+    let saved = state
+        .provider_settings
+        .lock()
+        .unwrap()
+        .get(&provider_id)
+        .cloned()
+        .unwrap_or_else(|| default_provider_settings(&provider_id));
+
     let api_key = if payload.api_key.trim().is_empty() {
-        state.api_key.lock().unwrap().clone()
+        saved.api_key
     } else {
         payload.api_key
     };
@@ -186,13 +224,13 @@ pub async fn list_models(
     }
 
     let api_endpoint = if payload.api_endpoint.trim().is_empty() {
-        state.api_endpoint.lock().unwrap().clone()
+        saved.api_endpoint
     } else {
         payload.api_endpoint
     };
-    let model = state.model.lock().unwrap().clone();
+    let model = saved.model;
 
-    LlmClient::new(&api_key, &api_endpoint, &model)
+    LlmClient::new(&provider_id, &api_key, &api_endpoint, &model)
         .list_models()
         .await
 }
@@ -227,4 +265,30 @@ fn write_settings(app: &AppHandle, settings: &PersistedSettings) -> Result<(), S
     let contents = serde_json::to_string_pretty(settings)
         .map_err(|e| format!("Failed to serialize settings: {}", e))?;
     fs::write(&path, contents).map_err(|e| format!("Failed to write settings file: {}", e))
+}
+
+fn default_provider_settings(id: &str) -> ProviderSettings {
+    ProviderSettings {
+        api_key: String::new(),
+        api_endpoint: default_endpoint(id).to_string(),
+        model: default_model(id).to_string(),
+    }
+}
+
+fn normalize_settings(settings: &mut PersistedSettings) {
+    if settings.active_provider_id.trim().is_empty() {
+        settings.active_provider_id = "anthropic".to_string();
+    }
+    for id in built_in_provider_ids() {
+        let entry = settings
+            .providers
+            .entry(id.to_string())
+            .or_insert_with(|| default_provider_settings(id));
+        if entry.api_endpoint.trim().is_empty() {
+            entry.api_endpoint = default_endpoint(id).to_string();
+        }
+        if entry.model.trim().is_empty() {
+            entry.model = default_model(id).to_string();
+        }
+    }
 }

@@ -43,7 +43,8 @@ const StatusDot = styled(FaCircle)`
 `;
 
 export const StatusBar: React.FC = () => {
-  const model = useSettingsStore((s) => s.model);
+  const providerName = useSettingsStore((s) => s.activeProviderDefinition.name);
+  const model = useSettingsStore((s) => s.activeProviderSettings.model);
   const isConfigured = useSettingsStore((s) => s.isConfigured());
   const isStreaming = useChatStore((s) => s.isStreaming);
 
@@ -61,7 +62,7 @@ export const StatusBar: React.FC = () => {
         )}
       </StatusLeft>
       <StatusRight>
-        <span>{model}</span>
+        <span>{providerName} - {model}</span>
       </StatusRight>
     </StatusBarContainer>
   );

@@ -3,11 +3,18 @@
 // ============================================================
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { StreamEvent, StreamEndEvent, StreamErrorEvent } from '@/types';
+import type {
+  ProviderId,
+  ProviderSettingsMap,
+  StreamEvent,
+  StreamEndEvent,
+  StreamErrorEvent,
+} from '@/types';
 
 // ─── Commands (Frontend → Backend) ──────────────────────────
 
 export interface SendMessagePayload {
+  providerId: ProviderId;
   conversationId: string;
   assistantMessageId: string;
   messages: Array<{
@@ -28,6 +35,7 @@ export async function stopStreaming(conversationId: string): Promise<void> {
 
 /** Save settings to the Rust backend */
 export async function saveSettings(settings: {
+  providerId: ProviderId;
   apiKey: string;
   apiEndpoint: string;
   model: string;
@@ -37,9 +45,8 @@ export async function saveSettings(settings: {
 
 /** Load settings from the Rust backend */
 export async function loadSettings(): Promise<{
-  apiEndpoint: string;
-  model: string;
-  hasApiKey: boolean;
+  activeProviderId: ProviderId;
+  providers: Record<ProviderId, Omit<ProviderSettingsMap[ProviderId], 'apiKey'> & { hasApiKey: boolean }>;
 }> {
   return invoke('load_settings');
 }
@@ -53,6 +60,7 @@ export interface ModelInfo {
 
 /** List available models for the configured Anthropic-compatible endpoint */
 export async function listModels(payload: {
+  providerId: ProviderId;
   apiKey: string;
   apiEndpoint: string;
 }): Promise<ModelInfo[]> {

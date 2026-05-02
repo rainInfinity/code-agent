@@ -26,6 +26,7 @@ export function useChat() {
   } = useChatStore();
 
   const isConfigured = useSettingsStore((s) => s.isConfigured());
+  const activeProviderId = useSettingsStore((s) => s.activeProviderId);
 
   // Subscribe to Tauri events
   useEffect(() => {
@@ -101,6 +102,7 @@ export function useChat() {
 
       try {
         await ipcSendMessage({
+          providerId: activeProviderId,
           conversationId: convId,
           assistantMessageId: assistantMsgId,
           messages,
@@ -113,7 +115,15 @@ export function useChat() {
         setStreaming(false);
       }
     },
-    [activeConversationId, isStreaming, addMessage, createConversation, setStreaming, updateMessage]
+    [
+      activeConversationId,
+      activeProviderId,
+      isStreaming,
+      addMessage,
+      createConversation,
+      setStreaming,
+      updateMessage,
+    ]
   );
 
   const stop = useCallback(async () => {
