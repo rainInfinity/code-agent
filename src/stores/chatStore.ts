@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Message, Conversation } from '@/types';
+import { messages as appMessages } from '@/i18n';
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2);
@@ -35,7 +36,7 @@ function normalizePersistedConversations(conversations: Conversation[]): Convers
         ? {
             ...message,
             status: 'error',
-            content: message.content || 'Response interrupted.',
+            content: message.content || appMessages.messages.interrupted,
           }
         : message,
     ),
@@ -54,7 +55,7 @@ export const useChatStore = create<ChatState>()(
         const id = generateId();
         const conversation: Conversation = {
           id,
-          title: 'New Conversation',
+          title: appMessages.conversations.newConversation,
           messages: [],
           createdAt: Date.now(),
           updatedAt: Date.now(),

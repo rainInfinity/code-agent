@@ -8,6 +8,7 @@ import {
   FaStop,
   FaWandMagicSparkles,
 } from 'react-icons/fa6';
+import { messages } from '@/i18n';
 
 const InputContainer = styled.div`
   padding: ${({ theme }) => theme.spacing.md} ${({ theme }) => theme.spacing.xl};
@@ -231,10 +232,14 @@ export const MessageInput: React.FC<MessageInputProps> = ({
 }) => {
   const [value, setValue] = useState('');
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
-  const [mode, setMode] = useState('Thinking');
+  const [mode, setMode] = useState<keyof typeof messages.composer.modes>('thinking');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modeSelectorRef = useRef<HTMLDivElement>(null);
-  const modeOptions = ['Fast', 'Thinking', 'Pro'];
+  const modeOptions: Array<keyof typeof messages.composer.modes> = [
+    'fast',
+    'thinking',
+    'pro',
+  ];
 
   // Auto-resize textarea
   const adjustHeight = useCallback(() => {
@@ -309,33 +314,33 @@ export const MessageInput: React.FC<MessageInputProps> = ({
           onKeyDown={handleKeyDown}
           placeholder={
             isStreaming
-              ? 'AI is thinking...'
+              ? messages.composer.placeholders.thinking
               : disabled
-                ? 'Configure API key in settings first'
-                : 'Send a message... (Enter to send, Shift+Enter for new line)'
+                ? messages.composer.placeholders.disabled
+                : messages.composer.placeholders.ready
           }
           disabled={isStreaming || disabled}
           rows={1}
-          aria-label="Message input"
+          aria-label={messages.composer.inputLabel}
         />
         <ComposerToolbar>
           <ToolbarGroup>
             <ComposerButton
               type="button"
               onClick={() => undefined}
-              title="Add file, not available yet"
-              aria-label="Add file, not available yet"
+              title={messages.composer.addFileUnavailable}
+              aria-label={messages.composer.addFileUnavailable}
             >
               <FaPaperclip size={13} />
             </ComposerButton>
             <ComposerButton
               type="button"
               onClick={() => undefined}
-              title="Tools and skills, not available yet"
-              aria-label="Tools and skills, not available yet"
+              title={messages.composer.toolsUnavailable}
+              aria-label={messages.composer.toolsUnavailable}
             >
               <FaWandMagicSparkles size={13} />
-              <span>Tools</span>
+              <span>{messages.composer.tools}</span>
             </ComposerButton>
           </ToolbarGroup>
           <ToolbarGroup ref={modeSelectorRef}>
@@ -343,12 +348,12 @@ export const MessageInput: React.FC<MessageInputProps> = ({
               type="button"
               $open={modeMenuOpen}
               onClick={() => setModeMenuOpen((open) => !open)}
-              title="Choose visual response mode"
-              aria-label={`Choose visual response mode. Current mode: ${mode}. UI only.`}
+              title={messages.composer.chooseMode(messages.composer.modes[mode])}
+              aria-label={messages.composer.chooseMode(messages.composer.modes[mode])}
               aria-haspopup="menu"
               aria-expanded={modeMenuOpen}
             >
-              <span>{mode}</span>
+              <span>{messages.composer.modes[mode]}</span>
               <FaChevronDown size={11} />
             </ModeButton>
             <ModeMenu $open={modeMenuOpen} role="menu">
@@ -364,7 +369,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
                     setModeMenuOpen(false);
                   }}
                 >
-                  {option}
+                  {messages.composer.modes[option]}
                   {mode === option && <FaCheck size={11} />}
                 </ModeMenuItem>
               ))}
@@ -373,8 +378,8 @@ export const MessageInput: React.FC<MessageInputProps> = ({
               <StopButton
                 type="button"
                 onClick={onStop}
-                title="Stop generating"
-                aria-label="Stop generating"
+                title={messages.composer.stopGenerating}
+                aria-label={messages.composer.stopGenerating}
               >
                 <FaStop size={12} />
               </StopButton>
@@ -384,8 +389,8 @@ export const MessageInput: React.FC<MessageInputProps> = ({
                 onClick={handleSubmit}
                 $disabled={isEmpty || disabled}
                 disabled={isEmpty || disabled}
-                title="Send message"
-                aria-label="Send message"
+                title={messages.composer.sendMessage}
+                aria-label={messages.composer.sendMessage}
               >
                 <FaPaperPlane size={13} />
               </SendButton>
@@ -394,7 +399,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
         </ComposerToolbar>
       </InputWrapper>
       <Hint>
-        Claude Haiku 4.5 &middot; Enter to send, Shift+Enter for new line
+        {messages.composer.hint}
       </Hint>
     </InputContainer>
   );

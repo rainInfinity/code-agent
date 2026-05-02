@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { FaCircle } from 'react-icons/fa6';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useChatStore } from '@/stores/chatStore';
+import { messages } from '@/i18n';
 
 const StatusBarContainer = styled.footer`
   display: flex;
@@ -51,11 +52,11 @@ export const StatusBar: React.FC = () => {
       <StatusLeft>
         <StatusIndicator $connected={isConfigured}>
           <StatusDot />
-          {isConfigured ? 'Connected' : 'Not configured'}
+          {isConfigured ? messages.status.connected : messages.status.notConfigured}
         </StatusIndicator>
         {isStreaming && (
           <span style={{ color: 'inherit', opacity: 0.8 }}>
-            Streaming...
+            {messages.status.streaming}
           </span>
         )}
       </StatusLeft>

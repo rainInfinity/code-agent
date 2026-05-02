@@ -4,6 +4,7 @@ import { FaCheck, FaChevronDown, FaCopy, FaRobot, FaUser, FaXmark } from "react-
 import { useChatStore } from "@/stores/chatStore";
 import { Row, Column } from "@/components/common/Flex";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { messages as appMessages } from "@/i18n";
 
 const ListContainer = styled.div`
   flex: 1;
@@ -253,7 +254,11 @@ export const MessageList: React.FC = () => {
       {messages.map((msg) => {
         const copyTone = copyState[msg.id] ?? "idle";
         const copyLabel =
-          copyTone === "success" ? "Copied" : copyTone === "error" ? "Copy failed" : "Copy message";
+          copyTone === "success"
+            ? appMessages.messages.copy.success
+            : copyTone === "error"
+              ? appMessages.messages.copy.error
+              : appMessages.messages.copy.idle;
 
         return (
           <MessageWrapper key={msg.id} $role={msg.role} $align="flex-start" $gap="md">
@@ -261,10 +266,16 @@ export const MessageList: React.FC = () => {
               {msg.role === "user" ? <FaUser size={14} /> : <FaRobot size={14} />}
             </Avatar>
             <MessageContent $role={msg.role}>
-              <RoleName>{msg.role === "user" ? "You" : "Assistant"}</RoleName>
+              <RoleName>
+                {msg.role === "user"
+                  ? appMessages.messages.roles.user
+                  : appMessages.messages.roles.assistant}
+              </RoleName>
               <MessageBody>
                 {msg.status === "error" ? (
-                  <ErrorMessage>{msg.content || "An error occurred"}</ErrorMessage>
+                  <ErrorMessage>
+                    {msg.content || appMessages.messages.errorFallback}
+                  </ErrorMessage>
                 ) : msg.status === "streaming" && !msg.content ? (
                   <ThinkingIndicator>
                     <span />
@@ -301,8 +312,8 @@ export const MessageList: React.FC = () => {
         type="button"
         $visible={showScrollToBottom}
         onClick={scrollToBottom}
-        title="Scroll to latest message"
-        aria-label="Scroll to latest message"
+        title={appMessages.messages.scrollToLatest}
+        aria-label={appMessages.messages.scrollToLatest}
       >
         <FaChevronDown size={14} />
       </ScrollToBottomButton>

@@ -1,6 +1,7 @@
 import React from 'react';
 import styled, { keyframes } from 'styled-components';
 import { FaTerminal, FaCode, FaFileCode, FaWandMagicSparkles } from 'react-icons/fa6';
+import { messages } from '@/i18n';
 
 const Container = styled.div`
   flex: 1;
@@ -105,10 +106,10 @@ interface WelcomeScreenProps {
 }
 
 const suggestions = [
-  { icon: FaCode, text: 'Explain this code snippet' },
-  { icon: FaTerminal, text: 'Write a bash script' },
-  { icon: FaFileCode, text: 'Refactor this function' },
-  { icon: FaWandMagicSparkles, text: 'Generate unit tests' },
+  { icon: FaCode, text: messages.welcome.suggestions[0] },
+  { icon: FaTerminal, text: messages.welcome.suggestions[1] },
+  { icon: FaFileCode, text: messages.welcome.suggestions[2] },
+  { icon: FaWandMagicSparkles, text: messages.welcome.suggestions[3] },
 ];
 
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onSuggestionClick }) => {
@@ -120,10 +121,9 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onSuggestionClick 
             <FaTerminal />
           </IconCircle>
         </IconGroup>
-        <Title>Code Agent</Title>
+        <Title>{messages.welcome.title}</Title>
         <Subtitle>
-          Your AI-powered coding assistant. Ask questions, generate code,
-          debug issues, or explore new ideas.
+          {messages.welcome.subtitle}
         </Subtitle>
 
         <SuggestionsGrid>

@@ -1,6 +1,7 @@
 import React from 'react';
 import styled, { keyframes } from 'styled-components';
 import { FaKey, FaArrowRight } from 'react-icons/fa6';
+import { messages } from '@/i18n';
 
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(8px); }
@@ -61,10 +62,10 @@ export const ApiConfigBanner: React.FC<ApiConfigBannerProps> = ({ onOpenSettings
         <FaKey size={14} />
       </IconWrapper>
       <BannerText>
-        API key not configured. Add your Anthropic API key to start chatting.
+        {messages.apiConfig.message}
       </BannerText>
       <ConfigButton onClick={onOpenSettings}>
-        Configure <FaArrowRight size={10} />
+        {messages.apiConfig.action} <FaArrowRight size={10} />
       </ConfigButton>
     </Banner>
   );

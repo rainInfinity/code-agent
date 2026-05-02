@@ -14,6 +14,7 @@ import {
 import { useSettingsStore } from '@/stores/settingsStore';
 import { listModels, loadSettings, saveSettings, type ModelInfo } from '@/hooks/useIpc';
 import { Column, Row } from '@/components/common/Flex';
+import { messages } from '@/i18n';
 
 // ─── Animations ─────────────────────────────────────────────
 
@@ -94,6 +95,10 @@ const SectionTitle = styled.h3`
 `;
 
 const FieldGroup = styled(Column)``;
+
+const FieldLabelRow = styled(Row)`
+  width: 100%;
+`;
 
 const Label = styled.label`
   display: flex;
@@ -360,39 +365,45 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     <Overlay onClick={onClose}>
       <Modal onClick={(e) => e.stopPropagation()}>
         <ModalHeader $align="center" $justify="space-between">
-          <ModalTitle>Settings</ModalTitle>
-          <CloseButton onClick={onClose} aria-label="Close settings">
+          <ModalTitle>{messages.settings.title}</ModalTitle>
+          <CloseButton onClick={onClose} aria-label={messages.settings.close}>
             <FaXmark size={16} />
           </CloseButton>
         </ModalHeader>
 
         <ModalBody $gap="xl">
           <Section $gap="md">
-            <SectionTitle>API Configuration</SectionTitle>
+            <SectionTitle>{messages.settings.apiConfiguration}</SectionTitle>
 
             <FieldGroup $gap="xs">
-              <Label htmlFor="api-key">
-                <LabelIcon><FaKey size={12} /></LabelIcon>
-                API Key
-              </Label>
-              {apiKeyConfigured && (
-                <ConfiguredStatus $align="center" $gap="xs">
-                  <FaKey size={11} />
-                  API key configured
-                </ConfiguredStatus>
-              )}
+              <FieldLabelRow $align="center" $justify="space-between" $gap="md">
+                <Label htmlFor="api-key">
+                  <LabelIcon><FaKey size={12} /></LabelIcon>
+                  {messages.settings.apiKey}
+                </Label>
+                {apiKeyConfigured && (
+                  <ConfiguredStatus $align="center" $gap="xs">
+                    <FaKey size={11} />
+                    {messages.settings.apiKeyConfigured}
+                  </ConfiguredStatus>
+                )}
+              </FieldLabelRow>
               <Input
                 id="api-key"
                 type="password"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder={apiKeyConfigured ? 'Enter a new key to replace current key' : 'sk-ant-...'}
+                placeholder={
+                  apiKeyConfigured
+                    ? messages.settings.apiKeyReplacePlaceholder
+                    : messages.settings.apiKeyPlaceholder
+                }
                 autoComplete="off"
               />
               <HelperText>
                 {apiKeyConfigured
-                  ? 'Leave blank to keep the saved key. The current key is not shown.'
-                  : 'Your Anthropic API key is stored by the desktop app, not localStorage.'}
+                  ? messages.settings.apiKeyKeepHelp
+                  : messages.settings.apiKeyStorageHelp}
               </HelperText>
               {saveError && <ErrorText>{saveError}</ErrorText>}
             </FieldGroup>
@@ -400,22 +411,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             <FieldGroup $gap="xs">
               <Label htmlFor="api-endpoint">
                 <LabelIcon><FaServer size={12} /></LabelIcon>
-                API Endpoint
+                {messages.settings.apiEndpoint}
               </Label>
               <Input
                 id="api-endpoint"
                 type="url"
                 value={apiEndpoint}
                 onChange={(e) => setApiEndpoint(e.target.value)}
-                placeholder="https://api.anthropic.com"
+                placeholder={messages.settings.apiEndpointPlaceholder}
               />
-              <HelperText>Anthropic API endpoint. Change for proxy usage.</HelperText>
+              <HelperText>{messages.settings.apiEndpointHelp}</HelperText>
             </FieldGroup>
 
             <FieldGroup $gap="xs">
               <Label htmlFor="model">
                 <LabelIcon><FaRobot size={12} /></LabelIcon>
-                Model
+                {messages.settings.model}
               </Label>
               <ModelControlRow $gap="sm">
                 <Select
@@ -437,28 +448,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                 <IconButton
                   onClick={handleLoadModels}
                   disabled={isLoadingModels}
-                  title="Refresh available models"
-                  aria-label="Refresh available models"
+                  title={messages.settings.refreshModels}
+                  aria-label={messages.settings.refreshModels}
                 >
                   <FaRotate size={13} />
                 </IconButton>
               </ModelControlRow>
               <HelperText>
                 {availableModels.length > 0
-                  ? `${availableModels.length} models available.`
-                  : 'Refresh to query available models for this API key.'}
+                  ? messages.settings.modelsAvailable(availableModels.length)
+                  : messages.settings.modelsRefreshHelp}
               </HelperText>
               {modelError && <ErrorText>{modelError}</ErrorText>}
             </FieldGroup>
           </Section>
 
           <Section $gap="md">
-            <SectionTitle>Appearance</SectionTitle>
+            <SectionTitle>{messages.settings.appearance}</SectionTitle>
 
             <FieldGroup $gap="xs">
               <Label>
                 <LabelIcon><FaPalette size={12} /></LabelIcon>
-                Theme
+                {messages.settings.theme}
               </Label>
               <ThemeToggleGroup $gap="sm">
                 <ThemeButton
@@ -466,14 +477,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                   onClick={() => setThemeLocal('dark')}
                 >
                   <FaMoon size={12} />
-                  Dark
+                  {messages.settings.dark}
                 </ThemeButton>
                 <ThemeButton
                   $active={theme === 'light'}
                   onClick={() => setThemeLocal('light')}
                 >
                   <FaSun size={12} />
-                  Light
+                  {messages.settings.light}
                 </ThemeButton>
               </ThemeToggleGroup>
             </FieldGroup>
@@ -481,10 +492,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         </ModalBody>
 
         <ModalFooter $justify="flex-end" $gap="sm">
-          <CancelButton onClick={onClose}>Cancel</CancelButton>
+          <CancelButton onClick={onClose}>{messages.settings.cancel}</CancelButton>
           <SaveButton onClick={handleSave} disabled={isSaving}>
             <FaFloppyDisk size={13} />
-            {isSaving ? 'Saving...' : 'Save'}
+            {isSaving ? messages.settings.saving : messages.settings.save}
           </SaveButton>
         </ModalFooter>
       </Modal>

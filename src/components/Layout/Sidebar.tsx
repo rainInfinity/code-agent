@@ -2,14 +2,13 @@ import React from 'react';
 import styled from 'styled-components';
 import {
   FaPlus,
-  FaBars,
   FaGear,
   FaComments,
   FaTrashCan,
-  FaAngleLeft,
 } from 'react-icons/fa6';
 import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { messages } from '@/i18n';
 import { Column, Row } from '@/components/common/Flex';
 
 const SidebarContainer = styled(Column)<{ $collapsed: boolean }>`
@@ -41,53 +40,6 @@ const SidebarContent = styled(Column)<{ $collapsed: boolean }>`
   @media (prefers-reduced-motion: reduce) {
     transition: none;
     transform: none;
-  }
-`;
-
-const SidebarHeader = styled(Row)`
-  padding: ${({ theme }) => theme.spacing.md} ${({ theme }) => theme.spacing.lg};
-  border-bottom: 1px solid ${({ theme }) => theme.colors.sidebarBorder};
-  min-height: 52px;
-`;
-
-const LogoArea = styled(Row)`
-  font-size: ${({ theme }) => theme.typography.fontSize.md};
-  font-weight: ${({ theme }) => theme.typography.fontWeight.semibold};
-  color: ${({ theme }) => theme.colors.textPrimary};
-  white-space: nowrap;
-`;
-
-const LogoIcon = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: ${({ theme }) => theme.borderRadius.md};
-  background: linear-gradient(135deg, ${({ theme }) => theme.colors.accentPrimary}, ${({ theme }) => theme.colors.accentSecondary});
-  color: #fff;
-  font-size: 14px;
-`;
-
-const CollapseButton = styled.button`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: ${({ theme }) => theme.borderRadius.sm};
-  color: ${({ theme }) => theme.colors.textSecondary};
-  transition: background-color ${({ theme }) => theme.transitions.fast},
-    color ${({ theme }) => theme.transitions.fast};
-
-  &:hover {
-    background-color: ${({ theme }) => theme.colors.sidebarHover};
-    color: ${({ theme }) => theme.colors.textPrimary};
-  }
-
-  &:focus-visible {
-    outline: 2px solid ${({ theme }) => theme.colors.inputBorderFocus};
-    outline-offset: 2px;
   }
 `;
 
@@ -227,46 +179,6 @@ const SettingsButton = styled.button`
   }
 `;
 
-const ExpandButton = styled.button<{ $visible: boolean }>`
-  position: fixed;
-  top: ${({ theme }) => theme.spacing.md};
-  left: ${({ theme }) => theme.spacing.md};
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: ${({ theme }) => theme.borderRadius.md};
-  background-color: ${({ theme }) => theme.colors.bgSecondary};
-  border: 1px solid ${({ theme }) => theme.colors.border};
-  color: ${({ theme }) => theme.colors.textSecondary};
-  opacity: ${({ $visible }) => ($visible ? 1 : 0)};
-  visibility: ${({ $visible }) => ($visible ? 'visible' : 'hidden')};
-  pointer-events: ${({ $visible }) => ($visible ? 'auto' : 'none')};
-  transform: translateX(${({ $visible }) => ($visible ? '0' : '-8px')});
-  transition: background-color ${({ theme }) => theme.transitions.fast},
-    color ${({ theme }) => theme.transitions.fast},
-    opacity ${({ theme }) => theme.transitions.fast},
-    transform ${({ theme }) => theme.transitions.fast},
-    visibility ${({ theme }) => theme.transitions.fast};
-
-  &:hover {
-    background-color: ${({ theme }) => theme.colors.bgTertiary};
-    color: ${({ theme }) => theme.colors.textPrimary};
-  }
-
-  &:focus-visible {
-    outline: 2px solid ${({ theme }) => theme.colors.inputBorderFocus};
-    outline-offset: 2px;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    transition: none;
-    transform: none;
-  }
-`;
-
 interface SidebarProps {
   onOpenSettings: () => void;
 }
@@ -280,34 +192,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings }) => {
     deleteConversation,
   } = useChatStore();
 
-  const { sidebarCollapsed, toggleSidebar } = useSettingsStore();
+  const { sidebarCollapsed } = useSettingsStore();
   const collapsedTabIndex = sidebarCollapsed ? -1 : 0;
 
   return (
     <>
       <SidebarContainer $collapsed={sidebarCollapsed} aria-hidden={sidebarCollapsed}>
         <SidebarContent $collapsed={sidebarCollapsed}>
-          <SidebarHeader $align="center" $justify="space-between">
-            <LogoArea $align="center" $gap="sm">
-              <LogoIcon>
-                <FaComments size={14} />
-              </LogoIcon>
-              Code Agent
-            </LogoArea>
-            <CollapseButton
-              onClick={toggleSidebar}
-              title="Collapse sidebar"
-              aria-label="Collapse sidebar"
-              tabIndex={collapsedTabIndex}
-            >
-              <FaAngleLeft size={14} />
-            </CollapseButton>
-          </SidebarHeader>
-
           <SidebarActions>
             <NewChatButton onClick={() => createConversation()} tabIndex={collapsedTabIndex}>
               <FaPlus size={12} />
-              New Chat
+              {messages.sidebar.newChat}
             </NewChatButton>
           </SidebarActions>
 
@@ -328,8 +223,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings }) => {
                     e.stopPropagation();
                     deleteConversation(conv.id);
                   }}
-                  title="Delete conversation"
-                  aria-label="Delete conversation"
+                  title={messages.sidebar.deleteConversation}
+                  aria-label={messages.sidebar.deleteConversation}
                   tabIndex={collapsedTabIndex}
                 >
                   <FaTrashCan size={11} />
@@ -341,20 +236,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings }) => {
           <SidebarFooter>
             <SettingsButton onClick={onOpenSettings} tabIndex={collapsedTabIndex}>
               <FaGear size={13} />
-              Settings
+              {messages.sidebar.settings}
             </SettingsButton>
           </SidebarFooter>
         </SidebarContent>
       </SidebarContainer>
-      <ExpandButton
-        $visible={sidebarCollapsed}
-        onClick={toggleSidebar}
-        title="Expand sidebar"
-        aria-label="Expand sidebar"
-        tabIndex={sidebarCollapsed ? 0 : -1}
-      >
-        <FaBars size={14} />
-      </ExpandButton>
     </>
   );
 };

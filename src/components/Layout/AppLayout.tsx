@@ -2,8 +2,18 @@ import styled from 'styled-components';
 
 export const LayoutContainer = styled.div`
   display: flex;
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
   width: 100vw;
+  overflow: hidden;
+  background-color: ${({ theme }) => theme.colors.bgPrimary};
+`;
+
+export const AppFrame = styled.div`
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
   overflow: hidden;
   background-color: ${({ theme }) => theme.colors.bgPrimary};
 `;

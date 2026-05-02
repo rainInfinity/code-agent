@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { FaCopy, FaCheck } from 'react-icons/fa6';
+import { messages } from '@/i18n';
 
 // ─── Styled Components for Markdown ─────────────────────────
 
@@ -180,9 +181,9 @@ const CodeBlock: React.FC<{ language: string; code: string }> = ({ language, cod
     <CodeBlockWrapper>
       <CodeHeader>
         <LanguageLabel>{language}</LanguageLabel>
-        <CopyButton onClick={handleCopy} aria-label="Copy code">
+        <CopyButton onClick={handleCopy} aria-label={messages.messages.code.copy}>
           {copied ? <FaCheck size={11} /> : <FaCopy size={11} />}
-          {copied ? 'Copied' : 'Copy'}
+          {copied ? messages.messages.code.copied : messages.messages.code.copy}
         </CopyButton>
       </CodeHeader>
       <SyntaxHighlighter

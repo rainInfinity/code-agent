@@ -3,8 +3,9 @@ import { ThemeProvider } from 'styled-components';
 import { GlobalStyle } from '@/styles/GlobalStyle';
 import { darkTheme, lightTheme } from '@/styles/theme';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { LayoutContainer, MainArea, ContentArea } from '@/components/Layout/AppLayout';
+import { AppFrame, LayoutContainer, MainArea, ContentArea } from '@/components/Layout/AppLayout';
 import { Sidebar } from '@/components/Layout/Sidebar';
+import { TitleBar } from '@/components/Layout/TitleBar';
 import { StatusBar } from '@/components/Layout/StatusBar';
 import { ChatPanel } from '@/components/Chat/ChatPanel';
 import { SettingsModal } from '@/components/common/SettingsModal';
@@ -38,18 +39,21 @@ const App: React.FC = () => {
   return (
     <ThemeProvider theme={theme}>
       <GlobalStyle />
-      <LayoutContainer>
-        <Sidebar onOpenSettings={() => setSettingsOpen(true)} />
-        <MainArea>
-          {!isConfigured && (
-            <ApiConfigBanner onOpenSettings={() => setSettingsOpen(true)} />
-          )}
-          <ContentArea>
-            <ChatPanel />
-          </ContentArea>
-          <StatusBar />
-        </MainArea>
-      </LayoutContainer>
+      <AppFrame>
+        <TitleBar />
+        <LayoutContainer>
+          <Sidebar onOpenSettings={() => setSettingsOpen(true)} />
+          <MainArea>
+            {!isConfigured && (
+              <ApiConfigBanner onOpenSettings={() => setSettingsOpen(true)} />
+            )}
+            <ContentArea>
+              <ChatPanel />
+            </ContentArea>
+            <StatusBar />
+          </MainArea>
+        </LayoutContainer>
+      </AppFrame>
       {settingsOpen && (
         <SettingsModal onClose={() => setSettingsOpen(false)} />
       )}
