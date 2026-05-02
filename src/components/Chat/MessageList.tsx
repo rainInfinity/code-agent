@@ -8,9 +8,16 @@ import { messages as appMessages } from "@/i18n";
 
 const DISENGAGE_AUTO_FOLLOW_PX = 150;
 const REENGAGE_AUTO_FOLLOW_PX = 50;
+const BUTTON_SMOOTH_SCROLL_MS = 700;
+
+const ListShell = styled.div`
+  flex: 1;
+  min-height: 0;
+  position: relative;
+`;
 
 const ListContainer = styled.div<{ $isStreaming: boolean }>`
-  flex: 1;
+  height: 100%;
   overflow-y: auto;
   padding: ${({ theme }) => theme.spacing.xl} 0;
   position: relative;
@@ -18,7 +25,7 @@ const ListContainer = styled.div<{ $isStreaming: boolean }>`
 `;
 
 const MessagesContent = styled.div`
-  min-height: 100%;
+  width: 100%;
 `;
 
 const MessageWrapper = styled(Row)<{ $role: string }>`
@@ -66,32 +73,6 @@ const RoleName = styled.div`
 const MessageBody = styled.div`
   min-width: 0;
   min-height: 28px;
-`;
-
-const StreamingText = styled.div`
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  font-family: ${({ theme }) => theme.typography.fontFamilyMono};
-  font-size: ${({ theme }) => theme.typography.fontSize.base};
-  line-height: ${({ theme }) => theme.typography.lineHeight.relaxed};
-`;
-
-const MessageTransition = styled.div`
-  display: grid;
-  min-width: 0;
-
-  > * {
-    grid-area: 1 / 1;
-    min-width: 0;
-    transition: opacity 200ms ease;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    > * {
-      transition: none;
-    }
-  }
 `;
 
 const MessageActions = styled.div<{ $role: string }>`
@@ -146,7 +127,7 @@ const CopyButton = styled.button<{ $tone: "idle" | "success" | "error" }>`
 `;
 
 const ScrollToBottomButton = styled.button<{ $visible: boolean }>`
-  position: sticky;
+  position: absolute;
   bottom: ${({ theme }) => theme.spacing.md};
   left: 50%;
   transform: translateX(-50%) translateY(${({ $visible }) => ($visible ? "0" : "8px")});
@@ -156,7 +137,6 @@ const ScrollToBottomButton = styled.button<{ $visible: boolean }>`
   justify-content: center;
   width: 36px;
   height: 36px;
-  margin: ${({ theme }) => theme.spacing.md} auto 0;
   border-radius: ${({ theme }) => theme.borderRadius.full};
   background-color: ${({ theme }) => theme.colors.bgElevated};
   border: 1px solid ${({ theme }) => theme.colors.border};
@@ -190,25 +170,6 @@ const pulse = keyframes`
   50% { opacity: 1; }
 `;
 
-const fadeIn = keyframes`
-  to { opacity: 1; }
-`;
-
-const fadeOut = keyframes`
-  to { opacity: 0; }
-`;
-
-const FadingStreamingText = styled(StreamingText)`
-  opacity: 1;
-  animation: ${fadeOut} 200ms ease forwards;
-  pointer-events: none;
-`;
-
-const FadingMarkdown = styled.div<{ $crossfading: boolean }>`
-  opacity: ${({ $crossfading }) => ($crossfading ? 0 : 1)};
-  animation: ${({ $crossfading }) => ($crossfading ? fadeIn : "none")} 200ms ease forwards;
-`;
-
 const ThinkingIndicator = styled.div`
   display: flex;
   align-items: center;
@@ -240,26 +201,18 @@ const ErrorMessage = styled.div`
   border: 1px solid ${({ theme }) => `${theme.colors.error}30`};
 `;
 
+const makeStreamingMarkdownRenderable = (content: string) => {
+  const fenceMatches = content.match(/(^|\n)\s*(```|~~~)/g) ?? [];
+  if (fenceMatches.length % 2 === 1) {
+    const lastFence = fenceMatches[fenceMatches.length - 1];
+    const fence = lastFence.includes("~~~") ? "~~~" : "```";
+    return `${content}\n${fence}`;
+  }
+
+  return content;
+};
+
 const MessageBodyContent: React.FC<{ status: string; content: string }> = ({ status, content }) => {
-  const previousStatusRef = useRef(status);
-  const lastStreamingContentRef = useRef("");
-  const [crossfadeContent, setCrossfadeContent] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (status === "streaming" && content) {
-      lastStreamingContentRef.current = content;
-    }
-
-    if (previousStatusRef.current === "streaming" && status === "complete") {
-      setCrossfadeContent(lastStreamingContentRef.current || content);
-      const timeout = window.setTimeout(() => setCrossfadeContent(null), 200);
-      previousStatusRef.current = status;
-      return () => window.clearTimeout(timeout);
-    }
-
-    previousStatusRef.current = status;
-  }, [content, status]);
-
   if (status === "error") {
     return <ErrorMessage>{content || appMessages.messages.errorFallback}</ErrorMessage>;
   }
@@ -275,18 +228,7 @@ const MessageBodyContent: React.FC<{ status: string; content: string }> = ({ sta
   }
 
   if (status === "streaming") {
-    return <StreamingText>{content}</StreamingText>;
-  }
-
-  if (crossfadeContent) {
-    return (
-      <MessageTransition>
-        <FadingStreamingText>{crossfadeContent}</FadingStreamingText>
-        <FadingMarkdown $crossfading>
-          <MarkdownRenderer content={content} />
-        </FadingMarkdown>
-      </MessageTransition>
-    );
+    return <MarkdownRenderer content={makeStreamingMarkdownRenderable(content)} />;
   }
 
   return <MarkdownRenderer content={content} />;
@@ -296,6 +238,8 @@ export const MessageList: React.FC = () => {
   const listRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const autoFollowRef = useRef(true);
+  const smoothScrollUntilRef = useRef(0);
+  const smoothScrollTimeoutRef = useRef<number | null>(null);
   const previousConversationIdRef = useRef<string | null>(null);
   const previousLastMessageIdRef = useRef<string | null>(null);
   const [copyState, setCopyState] = useState<Record<string, "success" | "error">>({});
@@ -311,7 +255,11 @@ export const MessageList: React.FC = () => {
     return Math.max(0, el.scrollHeight - el.scrollTop - el.clientHeight);
   }, []);
 
-  const scrollToBottomInstant = useCallback(() => {
+  const scrollToBottomInstant = useCallback((force = false) => {
+    if (!force && Date.now() < smoothScrollUntilRef.current) {
+      return;
+    }
+
     const el = listRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
@@ -320,6 +268,12 @@ export const MessageList: React.FC = () => {
   const updateScrollAffordance = useCallback(() => {
     const el = listRef.current;
     if (!el) return;
+
+    if (Date.now() < smoothScrollUntilRef.current) {
+      autoFollowRef.current = true;
+      setShowScrollToBottom(false);
+      return;
+    }
 
     const distanceFromBottom = getDistanceFromBottom(el);
     if (distanceFromBottom > DISENGAGE_AUTO_FOLLOW_PX) {
@@ -351,9 +305,22 @@ export const MessageList: React.FC = () => {
     const el = listRef.current;
     if (!el) return;
     autoFollowRef.current = true;
+
+    if (smoothScrollTimeoutRef.current !== null) {
+      window.clearTimeout(smoothScrollTimeoutRef.current);
+    }
+
+    smoothScrollUntilRef.current = Date.now() + BUTTON_SMOOTH_SCROLL_MS;
+    smoothScrollTimeoutRef.current = window.setTimeout(() => {
+      smoothScrollUntilRef.current = 0;
+      smoothScrollTimeoutRef.current = null;
+      scrollToBottomInstant(true);
+      updateScrollAffordance();
+    }, BUTTON_SMOOTH_SCROLL_MS);
+
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     setShowScrollToBottom(false);
-  }, []);
+  }, [scrollToBottomInstant, updateScrollAffordance]);
 
   useEffect(() => {
     const conversationChanged = previousConversationIdRef.current !== activeConversationId;
@@ -362,7 +329,7 @@ export const MessageList: React.FC = () => {
 
     if (conversationChanged || userSentMessage) {
       autoFollowRef.current = true;
-      requestAnimationFrame(scrollToBottomInstant);
+      scrollToBottomInstant(true);
       setShowScrollToBottom(false);
     }
 
@@ -391,6 +358,14 @@ export const MessageList: React.FC = () => {
   }, [scrollToBottomInstant, updateScrollAffordance]);
 
   useEffect(() => {
+    return () => {
+      if (smoothScrollTimeoutRef.current !== null) {
+        window.clearTimeout(smoothScrollTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (autoFollowRef.current && isStreaming) {
       scrollToBottomInstant();
     }
@@ -400,59 +375,61 @@ export const MessageList: React.FC = () => {
   if (messages.length === 0) return null;
 
   return (
-    <ListContainer
-      ref={listRef}
-      className="selectable"
-      onScroll={updateScrollAffordance}
-      $isStreaming={isStreaming}
-    >
-      <MessagesContent ref={contentRef}>
-        {messages.map((msg) => {
-          const copyTone = copyState[msg.id] ?? "idle";
-          const copyLabel =
-            copyTone === "success"
-              ? appMessages.messages.copy.success
-              : copyTone === "error"
-                ? appMessages.messages.copy.error
-                : appMessages.messages.copy.idle;
+    <ListShell>
+      <ListContainer
+        ref={listRef}
+        className="selectable"
+        onScroll={updateScrollAffordance}
+        $isStreaming={isStreaming}
+      >
+        <MessagesContent ref={contentRef}>
+          {messages.map((msg) => {
+            const copyTone = copyState[msg.id] ?? "idle";
+            const copyLabel =
+              copyTone === "success"
+                ? appMessages.messages.copy.success
+                : copyTone === "error"
+                  ? appMessages.messages.copy.error
+                  : appMessages.messages.copy.idle;
 
-          return (
-            <MessageWrapper key={msg.id} $role={msg.role} $align="flex-start" $gap="md">
-              <Avatar $role={msg.role}>
-                {msg.role === "user" ? <FaUser size={14} /> : <FaRobot size={14} />}
-              </Avatar>
-              <MessageContent $role={msg.role}>
-                <RoleName>
-                  {msg.role === "user"
-                    ? appMessages.messages.roles.user
-                    : appMessages.messages.roles.assistant}
-                </RoleName>
-                <MessageBody>
-                  <MessageBodyContent status={msg.status} content={msg.content} />
-                </MessageBody>
-                <MessageActions $role={msg.role}>
-                  <CopyButton
-                    type="button"
-                    $tone={copyTone}
-                    onClick={() => copyMessage(msg.id, msg.content)}
-                    title={copyLabel}
-                    aria-label={copyLabel}
-                  >
-                    {copyTone === "success" ? (
-                      <FaCheck size={12} />
-                    ) : copyTone === "error" ? (
-                      <FaXmark size={12} />
-                    ) : (
-                      <FaCopy size={12} />
-                    )}
-                    <span>{copyLabel}</span>
-                  </CopyButton>
-                </MessageActions>
-              </MessageContent>
-            </MessageWrapper>
-          );
-        })}
-      </MessagesContent>
+            return (
+              <MessageWrapper key={msg.id} $role={msg.role} $align="flex-start" $gap="md">
+                <Avatar $role={msg.role}>
+                  {msg.role === "user" ? <FaUser size={14} /> : <FaRobot size={14} />}
+                </Avatar>
+                <MessageContent $role={msg.role}>
+                  <RoleName>
+                    {msg.role === "user"
+                      ? appMessages.messages.roles.user
+                      : appMessages.messages.roles.assistant}
+                  </RoleName>
+                  <MessageBody>
+                    <MessageBodyContent status={msg.status} content={msg.content} />
+                  </MessageBody>
+                  <MessageActions $role={msg.role}>
+                    <CopyButton
+                      type="button"
+                      $tone={copyTone}
+                      onClick={() => copyMessage(msg.id, msg.content)}
+                      title={copyLabel}
+                      aria-label={copyLabel}
+                    >
+                      {copyTone === "success" ? (
+                        <FaCheck size={12} />
+                      ) : copyTone === "error" ? (
+                        <FaXmark size={12} />
+                      ) : (
+                        <FaCopy size={12} />
+                      )}
+                      <span>{copyLabel}</span>
+                    </CopyButton>
+                  </MessageActions>
+                </MessageContent>
+              </MessageWrapper>
+            );
+          })}
+        </MessagesContent>
+      </ListContainer>
       <ScrollToBottomButton
         type="button"
         $visible={showScrollToBottom}
@@ -462,6 +439,6 @@ export const MessageList: React.FC = () => {
       >
         <FaChevronDown size={14} />
       </ScrollToBottomButton>
-    </ListContainer>
+    </ListShell>
   );
 };

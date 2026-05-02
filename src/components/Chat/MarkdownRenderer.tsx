@@ -147,15 +147,15 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
         components={{
           code: ({ className, children }) => {
             const match = /language-(\w+)/.exec(className || '');
-            const isInline = !match;
             const codeString = String(children).replace(/\n$/, '');
+            const isInline = !match && !String(children).includes('\n');
 
             if (isInline) {
               return <code className={className}>{children}</code>;
             }
 
             return (
-              <CodeBlock language={match[1]} code={codeString} />
+              <CodeBlock language={match?.[1] ?? 'text'} code={codeString} />
             );
           },
         }}

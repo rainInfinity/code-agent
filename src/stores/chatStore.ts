@@ -7,6 +7,9 @@ function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2);
 }
 
+const recentStreamDeltas = new Map<string, { delta: string; at: number }>();
+const DUPLICATE_DELTA_WINDOW_MS = 20;
+
 interface ChatState {
   conversations: Conversation[];
   activeConversationId: string | null;
@@ -127,18 +130,33 @@ export const useChatStore = create<ChatState>()(
         })),
 
       appendToMessage: (conversationId: string, messageId: string, delta: string) =>
-        set((state) => ({
-          conversations: state.conversations.map((c) =>
-            c.id === conversationId
-              ? {
-                  ...c,
-                  messages: c.messages.map((m) =>
-                    m.id === messageId ? { ...m, content: m.content + delta } : m,
-                  ),
-                }
-              : c,
-          ),
-        })),
+        set((state) => {
+          const now = Date.now();
+          const recent = recentStreamDeltas.get(messageId);
+
+          if (
+            recent &&
+            recent.delta === delta &&
+            now - recent.at < DUPLICATE_DELTA_WINDOW_MS
+          ) {
+            return state;
+          }
+
+          recentStreamDeltas.set(messageId, { delta, at: now });
+
+          return {
+            conversations: state.conversations.map((c) =>
+              c.id === conversationId
+                ? {
+                    ...c,
+                    messages: c.messages.map((m) =>
+                      m.id === messageId ? { ...m, content: m.content + delta } : m,
+                    ),
+                  }
+                : c,
+            ),
+          };
+        }),
 
       setStreaming: (isStreaming: boolean, messageId: string | null = null) =>
         set({ isStreaming, streamingMessageId: messageId }),

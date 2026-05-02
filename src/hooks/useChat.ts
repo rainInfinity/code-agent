@@ -9,6 +9,73 @@ import {
   onStreamError,
 } from '@/hooks/useIpc';
 
+type StreamListenerRegistry = {
+  installed: boolean;
+  unlisteners: Array<() => void>;
+};
+
+const streamListenerRegistryKey = '__codeAgentStreamListeners__';
+
+function getStreamListenerRegistry(): StreamListenerRegistry {
+  const target = globalThis as typeof globalThis & {
+    [streamListenerRegistryKey]?: StreamListenerRegistry;
+  };
+
+  if (!target[streamListenerRegistryKey]) {
+    target[streamListenerRegistryKey] = {
+      installed: false,
+      unlisteners: [],
+    };
+  }
+
+  return target[streamListenerRegistryKey];
+}
+
+function ensureStreamListeners() {
+  const registry = getStreamListenerRegistry();
+  if (registry.installed) return;
+  registry.installed = true;
+
+  const install = async () => {
+    const unlisteners = await Promise.all([
+      onStreamDelta((event) => {
+        useChatStore.getState().appendToMessage(event.conversationId, event.messageId, event.delta);
+      }),
+      onStreamEnd((event) => {
+        const { updateMessage, setStreaming } = useChatStore.getState();
+        updateMessage(event.conversationId, event.messageId, {
+          content: event.fullContent,
+          status: 'complete',
+        });
+        setStreaming(false);
+      }),
+      onStreamError((event) => {
+        const { updateMessage, setStreaming } = useChatStore.getState();
+        updateMessage(event.conversationId, event.messageId, {
+          content: event.error,
+          status: 'error',
+        });
+        setStreaming(false);
+      }),
+    ]);
+
+    registry.unlisteners.push(...unlisteners);
+  };
+
+  install().catch(() => {
+    registry.installed = false;
+  });
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    const registry = getStreamListenerRegistry();
+    registry.unlisteners.forEach((unlisten) => unlisten());
+    registry.unlisteners = [];
+    registry.installed = false;
+  });
+}
+
 /**
  * Hook that manages the full chat lifecycle:
  * - Subscribes to streaming events from the Rust backend
@@ -19,7 +86,6 @@ export function useChat() {
     activeConversationId,
     isStreaming,
     addMessage,
-    appendToMessage,
     updateMessage,
     setStreaming,
     createConversation,
@@ -30,42 +96,8 @@ export function useChat() {
 
   // Subscribe to Tauri events
   useEffect(() => {
-    const unsubscribers: Array<() => void> = [];
-
-    const setup = async () => {
-      unsubscribers.push(
-        await onStreamDelta((event) => {
-          appendToMessage(event.conversationId, event.messageId, event.delta);
-        })
-      );
-
-      unsubscribers.push(
-        await onStreamEnd((event) => {
-          updateMessage(event.conversationId, event.messageId, {
-            content: event.fullContent,
-            status: 'complete',
-          });
-          setStreaming(false);
-        })
-      );
-
-      unsubscribers.push(
-        await onStreamError((event) => {
-          updateMessage(event.conversationId, event.messageId, {
-            content: event.error,
-            status: 'error',
-          });
-          setStreaming(false);
-        })
-      );
-    };
-
-    setup();
-
-    return () => {
-      unsubscribers.forEach((unsub) => unsub());
-    };
-  }, [appendToMessage, updateMessage, setStreaming]);
+    ensureStreamListeners();
+  }, []);
 
   const send = useCallback(
     async (content: string) => {
