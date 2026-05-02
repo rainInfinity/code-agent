@@ -12,8 +12,6 @@ import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { Column, Row } from '@/components/common/Flex';
 
-// ─── Styled Components ──────────────────────────────────────
-
 const SidebarContainer = styled(Column)<{ $collapsed: boolean }>`
   width: ${({ $collapsed }) => ($collapsed ? '0px' : '260px')};
   min-width: ${({ $collapsed }) => ($collapsed ? '0px' : '260px')};
@@ -23,6 +21,27 @@ const SidebarContainer = styled(Column)<{ $collapsed: boolean }>`
   overflow: hidden;
   transition: width ${({ theme }) => theme.transitions.normal},
     min-width ${({ theme }) => theme.transitions.normal};
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+`;
+
+const SidebarContent = styled(Column)<{ $collapsed: boolean }>`
+  width: 260px;
+  min-width: 260px;
+  height: 100%;
+  opacity: ${({ $collapsed }) => ($collapsed ? 0 : 1)};
+  transform: translateX(${({ $collapsed }) => ($collapsed ? '-12px' : '0')});
+  visibility: ${({ $collapsed }) => ($collapsed ? 'hidden' : 'visible')};
+  transition: opacity ${({ theme }) => theme.transitions.fast},
+    transform ${({ theme }) => theme.transitions.normal},
+    visibility ${({ theme }) => theme.transitions.fast};
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+    transform: none;
+  }
 `;
 
 const SidebarHeader = styled(Row)`
@@ -58,11 +77,17 @@ const CollapseButton = styled.button`
   height: 28px;
   border-radius: ${({ theme }) => theme.borderRadius.sm};
   color: ${({ theme }) => theme.colors.textSecondary};
-  transition: all ${({ theme }) => theme.transitions.fast};
+  transition: background-color ${({ theme }) => theme.transitions.fast},
+    color ${({ theme }) => theme.transitions.fast};
 
   &:hover {
     background-color: ${({ theme }) => theme.colors.sidebarHover};
     color: ${({ theme }) => theme.colors.textPrimary};
+  }
+
+  &:focus-visible {
+    outline: 2px solid ${({ theme }) => theme.colors.inputBorderFocus};
+    outline-offset: 2px;
   }
 `;
 
@@ -81,12 +106,19 @@ const NewChatButton = styled.button`
   font-size: ${({ theme }) => theme.typography.fontSize.base};
   font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
   border: 1px dashed ${({ theme }) => theme.colors.border};
-  transition: all ${({ theme }) => theme.transitions.fast};
+  transition: background-color ${({ theme }) => theme.transitions.fast},
+    border-color ${({ theme }) => theme.transitions.fast},
+    color ${({ theme }) => theme.transitions.fast};
 
   &:hover {
     background-color: ${({ theme }) => theme.colors.sidebarHover};
     border-color: ${({ theme }) => theme.colors.accentPrimary};
     color: ${({ theme }) => theme.colors.accentPrimary};
+  }
+
+  &:focus-visible {
+    outline: 2px solid ${({ theme }) => theme.colors.inputBorderFocus};
+    outline-offset: 2px;
   }
 `;
 
@@ -106,7 +138,8 @@ const ConversationItem = styled(Row).attrs({ as: 'button' })<{ $active: boolean 
   background-color: ${({ theme, $active }) =>
     $active ? theme.colors.sidebarActive : 'transparent'};
   text-align: left;
-  transition: all ${({ theme }) => theme.transitions.fast};
+  transition: background-color ${({ theme }) => theme.transitions.fast},
+    color ${({ theme }) => theme.transitions.fast};
   position: relative;
   min-height: 36px;
 
@@ -114,6 +147,11 @@ const ConversationItem = styled(Row).attrs({ as: 'button' })<{ $active: boolean 
     background-color: ${({ theme, $active }) =>
       $active ? theme.colors.sidebarActive : theme.colors.sidebarHover};
     color: ${({ theme }) => theme.colors.textPrimary};
+  }
+
+  &:focus-visible {
+    outline: 2px solid ${({ theme }) => theme.colors.inputBorderFocus};
+    outline-offset: 2px;
   }
 `;
 
@@ -138,9 +176,13 @@ const DeleteButton = styled.button`
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition: all ${({ theme }) => theme.transitions.fast};
+  transition: background-color ${({ theme }) => theme.transitions.fast},
+    color ${({ theme }) => theme.transitions.fast},
+    opacity ${({ theme }) => theme.transitions.fast},
+    visibility ${({ theme }) => theme.transitions.fast};
 
-  ${ConversationItem}:hover & {
+  ${ConversationItem}:hover &,
+  ${ConversationItem}:focus-within & {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
@@ -149,6 +191,11 @@ const DeleteButton = styled.button`
   &:hover {
     color: ${({ theme }) => theme.colors.error};
     background-color: ${({ theme }) => theme.colors.bgActive};
+  }
+
+  &:focus-visible {
+    outline: 2px solid ${({ theme }) => theme.colors.inputBorderFocus};
+    outline-offset: 2px;
   }
 `;
 
@@ -166,17 +213,21 @@ const SettingsButton = styled.button`
   border-radius: ${({ theme }) => theme.borderRadius.md};
   color: ${({ theme }) => theme.colors.textSecondary};
   font-size: ${({ theme }) => theme.typography.fontSize.sm};
-  transition: all ${({ theme }) => theme.transitions.fast};
+  transition: background-color ${({ theme }) => theme.transitions.fast},
+    color ${({ theme }) => theme.transitions.fast};
 
   &:hover {
     background-color: ${({ theme }) => theme.colors.sidebarHover};
     color: ${({ theme }) => theme.colors.textPrimary};
   }
+
+  &:focus-visible {
+    outline: 2px solid ${({ theme }) => theme.colors.inputBorderFocus};
+    outline-offset: 2px;
+  }
 `;
 
-// ─── Expand Button (shown when sidebar collapsed) ───────────
-
-const ExpandButton = styled.button`
+const ExpandButton = styled.button<{ $visible: boolean }>`
   position: fixed;
   top: ${({ theme }) => theme.spacing.md};
   left: ${({ theme }) => theme.spacing.md};
@@ -190,15 +241,31 @@ const ExpandButton = styled.button`
   background-color: ${({ theme }) => theme.colors.bgSecondary};
   border: 1px solid ${({ theme }) => theme.colors.border};
   color: ${({ theme }) => theme.colors.textSecondary};
-  transition: all ${({ theme }) => theme.transitions.fast};
+  opacity: ${({ $visible }) => ($visible ? 1 : 0)};
+  visibility: ${({ $visible }) => ($visible ? 'visible' : 'hidden')};
+  pointer-events: ${({ $visible }) => ($visible ? 'auto' : 'none')};
+  transform: translateX(${({ $visible }) => ($visible ? '0' : '-8px')});
+  transition: background-color ${({ theme }) => theme.transitions.fast},
+    color ${({ theme }) => theme.transitions.fast},
+    opacity ${({ theme }) => theme.transitions.fast},
+    transform ${({ theme }) => theme.transitions.fast},
+    visibility ${({ theme }) => theme.transitions.fast};
 
   &:hover {
     background-color: ${({ theme }) => theme.colors.bgTertiary};
     color: ${({ theme }) => theme.colors.textPrimary};
   }
-`;
 
-// ─── Component ──────────────────────────────────────────────
+  &:focus-visible {
+    outline: 2px solid ${({ theme }) => theme.colors.inputBorderFocus};
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+    transform: none;
+  }
+`;
 
 interface SidebarProps {
   onOpenSettings: () => void;
@@ -214,75 +281,80 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings }) => {
   } = useChatStore();
 
   const { sidebarCollapsed, toggleSidebar } = useSettingsStore();
+  const collapsedTabIndex = sidebarCollapsed ? -1 : 0;
 
-  if (sidebarCollapsed) {
-    return (
+  return (
+    <>
+      <SidebarContainer $collapsed={sidebarCollapsed} aria-hidden={sidebarCollapsed}>
+        <SidebarContent $collapsed={sidebarCollapsed}>
+          <SidebarHeader $align="center" $justify="space-between">
+            <LogoArea $align="center" $gap="sm">
+              <LogoIcon>
+                <FaComments size={14} />
+              </LogoIcon>
+              Code Agent
+            </LogoArea>
+            <CollapseButton
+              onClick={toggleSidebar}
+              title="Collapse sidebar"
+              aria-label="Collapse sidebar"
+              tabIndex={collapsedTabIndex}
+            >
+              <FaAngleLeft size={14} />
+            </CollapseButton>
+          </SidebarHeader>
+
+          <SidebarActions>
+            <NewChatButton onClick={() => createConversation()} tabIndex={collapsedTabIndex}>
+              <FaPlus size={12} />
+              New Chat
+            </NewChatButton>
+          </SidebarActions>
+
+          <ConversationList>
+            {conversations.map((conv) => (
+              <ConversationItem
+                key={conv.id}
+                $active={conv.id === activeConversationId}
+                $align="center"
+                $gap="sm"
+                onClick={() => setActiveConversation(conv.id)}
+                tabIndex={collapsedTabIndex}
+              >
+                <FaComments size={12} />
+                <ConversationTitle>{conv.title}</ConversationTitle>
+                <DeleteButton
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteConversation(conv.id);
+                  }}
+                  title="Delete conversation"
+                  aria-label="Delete conversation"
+                  tabIndex={collapsedTabIndex}
+                >
+                  <FaTrashCan size={11} />
+                </DeleteButton>
+              </ConversationItem>
+            ))}
+          </ConversationList>
+
+          <SidebarFooter>
+            <SettingsButton onClick={onOpenSettings} tabIndex={collapsedTabIndex}>
+              <FaGear size={13} />
+              Settings
+            </SettingsButton>
+          </SidebarFooter>
+        </SidebarContent>
+      </SidebarContainer>
       <ExpandButton
+        $visible={sidebarCollapsed}
         onClick={toggleSidebar}
         title="Expand sidebar"
         aria-label="Expand sidebar"
+        tabIndex={sidebarCollapsed ? 0 : -1}
       >
         <FaBars size={14} />
       </ExpandButton>
-    );
-  }
-
-  return (
-    <SidebarContainer $collapsed={sidebarCollapsed}>
-      <SidebarHeader $align="center" $justify="space-between">
-        <LogoArea $align="center" $gap="sm">
-          <LogoIcon>
-            <FaComments size={14} />
-          </LogoIcon>
-          Code Agent
-        </LogoArea>
-        <CollapseButton
-          onClick={toggleSidebar}
-          title="Collapse sidebar"
-          aria-label="Collapse sidebar"
-        >
-          <FaAngleLeft size={14} />
-        </CollapseButton>
-      </SidebarHeader>
-
-      <SidebarActions>
-        <NewChatButton onClick={() => createConversation()}>
-          <FaPlus size={12} />
-          New Chat
-        </NewChatButton>
-      </SidebarActions>
-
-      <ConversationList>
-        {conversations.map((conv) => (
-          <ConversationItem
-            key={conv.id}
-            $active={conv.id === activeConversationId}
-            $align="center"
-            $gap="sm"
-            onClick={() => setActiveConversation(conv.id)}
-          >
-            <FaComments size={12} />
-            <ConversationTitle>{conv.title}</ConversationTitle>
-            <DeleteButton
-              onClick={(e) => {
-                e.stopPropagation();
-                deleteConversation(conv.id);
-              }}
-              title="Delete conversation"
-              aria-label="Delete conversation"
-            >
-              <FaTrashCan size={11} />
-            </DeleteButton>
-          </ConversationItem>
-        ))}
-      </ConversationList>
-
-      <SidebarFooter>
-        <SettingsButton onClick={onOpenSettings}>
-          <FaGear size={13} />
-          Settings
-        </SettingsButton>
-      </SidebarFooter>
-    </SidebarContainer>
+    </>
   );
 };
