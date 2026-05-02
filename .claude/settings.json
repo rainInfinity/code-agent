@@ -1,7 +1,11 @@
 {
   "permissions": {
+    "allow": [
+      "Bash(npx openspec *)"
+    ],
     "additionalDirectories": [
-      "F:\\project\\code-agent\\openspec\\changes\\multi-provider-api-config\\specs"
+      "F:\\project\\code-agent\\openspec\\changes\\multi-provider-api-config\\specs",
+      "f:\\project\\code-agent\\openspec\\changes\\improve-chat-scroll-window-state\\specs"
     ]
   }
 }
