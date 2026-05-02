@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from "react";
 import styled, { keyframes } from "styled-components";
 import { FaRobot, FaUser } from "react-icons/fa6";
 import { useChatStore } from "@/stores/chatStore";
+import { Row, Column } from "@/components/common/Flex";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
 const ListContainer = styled.div`
@@ -10,9 +11,8 @@ const ListContainer = styled.div`
   padding: ${({ theme }) => theme.spacing.xl} 0;
 `;
 
-const MessageWrapper = styled.div<{ $role: string }>`
-  display: flex;
-  gap: ${({ theme }) => theme.spacing.md};
+const MessageWrapper = styled(Row)<{ $role: string }>`
+  flex-direction: ${({ $role }) => ($role === "user" ? "row-reverse" : "row")};
   padding: ${({ theme }) => theme.spacing.lg} ${({ theme }) => theme.spacing.xl};
   max-width: 860px;
   margin: 0 auto;
@@ -40,12 +40,14 @@ const Avatar = styled.div<{ $role: string }>`
     $role === "user" ? "#fff" : theme.colors.accentPrimary};
 `;
 
-const MessageContent = styled.div`
+const MessageContent = styled(Column)<{ $role: string }>`
   flex: 1;
   min-width: 0;
+  max-width: calc(100% - 44px);
   font-size: ${({ theme }) => theme.typography.fontSize.base};
   line-height: ${({ theme }) => theme.typography.lineHeight.relaxed};
   color: ${({ theme }) => theme.colors.textPrimary};
+  text-align: ${({ $role }) => ($role === "user" ? "right" : "left")};
 `;
 
 const RoleName = styled.div`
@@ -53,6 +55,11 @@ const RoleName = styled.div`
   font-weight: ${({ theme }) => theme.typography.fontWeight.semibold};
   color: ${({ theme }) => theme.colors.textPrimary};
   margin-bottom: ${({ theme }) => theme.spacing.xs};
+`;
+
+const MessageBody = styled.div`
+  min-width: 0;
+  min-height: 28px;
 `;
 
 const pulse = keyframes`
@@ -117,23 +124,25 @@ export const MessageList: React.FC = () => {
   return (
     <ListContainer ref={listRef} className="selectable">
       {messages.map((msg) => (
-        <MessageWrapper key={msg.id} $role={msg.role}>
+        <MessageWrapper key={msg.id} $role={msg.role} $align="flex-start" $gap="md">
           <Avatar $role={msg.role}>
             {msg.role === "user" ? <FaUser size={14} /> : <FaRobot size={14} />}
           </Avatar>
-          <MessageContent>
+          <MessageContent $role={msg.role}>
             <RoleName>{msg.role === "user" ? "You" : "Assistant"}</RoleName>
-            {msg.status === "error" ? (
-              <ErrorMessage>{msg.content || "An error occurred"}</ErrorMessage>
-            ) : msg.status === "streaming" && !msg.content ? (
-              <ThinkingIndicator>
-                <span />
-                <span />
-                <span />
-              </ThinkingIndicator>
-            ) : (
-              <MarkdownRenderer content={msg.content} />
-            )}
+            <MessageBody>
+              {msg.status === "error" ? (
+                <ErrorMessage>{msg.content || "An error occurred"}</ErrorMessage>
+              ) : msg.status === "streaming" && !msg.content ? (
+                <ThinkingIndicator>
+                  <span />
+                  <span />
+                  <span />
+                </ThinkingIndicator>
+              ) : (
+                <MarkdownRenderer content={msg.content} />
+              )}
+            </MessageBody>
           </MessageContent>
         </MessageWrapper>
       ))}

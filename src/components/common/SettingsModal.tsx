@@ -12,7 +12,8 @@ import {
   FaRotate,
 } from 'react-icons/fa6';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { listModels, saveSettings, type ModelInfo } from '@/hooks/useIpc';
+import { listModels, loadSettings, saveSettings, type ModelInfo } from '@/hooks/useIpc';
+import { Column, Row } from '@/components/common/Flex';
 
 // ─── Animations ─────────────────────────────────────────────
 
@@ -51,10 +52,7 @@ const Modal = styled.div`
   animation: ${slideUp} 250ms ease-out;
 `;
 
-const ModalHeader = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+const ModalHeader = styled(Row)`
   padding: ${({ theme }) => theme.spacing.xl};
   border-bottom: 1px solid ${({ theme }) => theme.colors.divider};
 `;
@@ -81,18 +79,11 @@ const CloseButton = styled.button`
   }
 `;
 
-const ModalBody = styled.div`
+const ModalBody = styled(Column)`
   padding: ${({ theme }) => theme.spacing.xl};
-  display: flex;
-  flex-direction: column;
-  gap: ${({ theme }) => theme.spacing.xl};
 `;
 
-const Section = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: ${({ theme }) => theme.spacing.md};
-`;
+const Section = styled(Column)``;
 
 const SectionTitle = styled.h3`
   font-size: ${({ theme }) => theme.typography.fontSize.sm};
@@ -102,11 +93,7 @@ const SectionTitle = styled.h3`
   letter-spacing: 0.5px;
 `;
 
-const FieldGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: ${({ theme }) => theme.spacing.xs};
-`;
+const FieldGroup = styled(Column)``;
 
 const Label = styled.label`
   display: flex;
@@ -167,10 +154,7 @@ const Select = styled.select`
   }
 `;
 
-const ModelControlRow = styled.div`
-  display: flex;
-  gap: ${({ theme }) => theme.spacing.sm};
-`;
+const ModelControlRow = styled(Row)``;
 
 const IconButton = styled.button`
   display: flex;
@@ -200,15 +184,18 @@ const HelperText = styled.span`
   color: ${({ theme }) => theme.colors.textTertiary};
 `;
 
+const ConfiguredStatus = styled(Row)`
+  color: ${({ theme }) => theme.colors.success};
+  font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
+`;
+
 const ErrorText = styled.span`
   font-size: ${({ theme }) => theme.typography.fontSize.xs};
   color: ${({ theme }) => theme.colors.error};
 `;
 
-const ThemeToggleGroup = styled.div`
-  display: flex;
-  gap: ${({ theme }) => theme.spacing.sm};
-`;
+const ThemeToggleGroup = styled(Row)``;
 
 const ThemeButton = styled.button<{ $active: boolean }>`
   display: flex;
@@ -232,12 +219,9 @@ const ThemeButton = styled.button<{ $active: boolean }>`
   }
 `;
 
-const ModalFooter = styled.div`
-  display: flex;
-  justify-content: flex-end;
+const ModalFooter = styled(Row)`
   padding: ${({ theme }) => theme.spacing.lg} ${({ theme }) => theme.spacing.xl};
   border-top: 1px solid ${({ theme }) => theme.colors.divider};
-  gap: ${({ theme }) => theme.spacing.sm};
 `;
 
 const SaveButton = styled.button`
@@ -286,10 +270,11 @@ interface SettingsModalProps {
 export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const settings = useSettingsStore();
 
-  const [apiKey, setApiKey] = useState(settings.apiKey);
+  const [apiKey, setApiKey] = useState('');
   const [apiEndpoint, setApiEndpoint] = useState(settings.apiEndpoint);
   const [model, setModel] = useState(settings.model);
   const [theme, setThemeLocal] = useState(settings.theme);
+  const [apiKeyConfigured, setApiKeyConfigured] = useState(settings.apiKeyConfigured);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
@@ -305,6 +290,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     return () => window.removeEventListener('keydown', handleEsc);
   }, [onClose]);
 
+  useEffect(() => {
+    loadSettings()
+      .then((loaded) => {
+        setApiEndpoint(loaded.apiEndpoint);
+        setModel(loaded.model);
+        setApiKeyConfigured(loaded.hasApiKey);
+        useSettingsStore.setState({
+          apiEndpoint: loaded.apiEndpoint,
+          model: loaded.model,
+          apiKeyConfigured: loaded.hasApiKey,
+          apiKey: '',
+        });
+      })
+      .catch(() => {
+        setApiKeyConfigured(settings.apiKeyConfigured);
+      });
+  }, [settings.apiKeyConfigured]);
+
   const handleSave = async () => {
     setIsSaving(true);
     setSaveError(null);
@@ -316,11 +319,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         model,
       });
 
-      if (apiKey.trim()) {
-        settings.setApiKey(apiKey);
-      } else {
-        settings.setApiKeyConfigured(settings.apiKeyConfigured);
-      }
+      const hasReplacementKey = apiKey.trim().length > 0;
+      const nextConfigured = hasReplacementKey || apiKeyConfigured;
+      useSettingsStore.setState({ apiKey: '', apiKeyConfigured: nextConfigured });
+      setApiKey('');
+      setApiKeyConfigured(nextConfigured);
       settings.setApiEndpoint(apiEndpoint);
       settings.setModel(model);
       settings.setTheme(theme);
@@ -356,35 +359,45 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   return (
     <Overlay onClick={onClose}>
       <Modal onClick={(e) => e.stopPropagation()}>
-        <ModalHeader>
+        <ModalHeader $align="center" $justify="space-between">
           <ModalTitle>Settings</ModalTitle>
           <CloseButton onClick={onClose} aria-label="Close settings">
             <FaXmark size={16} />
           </CloseButton>
         </ModalHeader>
 
-        <ModalBody>
-          <Section>
+        <ModalBody $gap="xl">
+          <Section $gap="md">
             <SectionTitle>API Configuration</SectionTitle>
 
-            <FieldGroup>
+            <FieldGroup $gap="xs">
               <Label htmlFor="api-key">
                 <LabelIcon><FaKey size={12} /></LabelIcon>
                 API Key
               </Label>
+              {apiKeyConfigured && (
+                <ConfiguredStatus $align="center" $gap="xs">
+                  <FaKey size={11} />
+                  API key configured
+                </ConfiguredStatus>
+              )}
               <Input
                 id="api-key"
                 type="password"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sk-ant-..."
+                placeholder={apiKeyConfigured ? 'Enter a new key to replace current key' : 'sk-ant-...'}
                 autoComplete="off"
               />
-              <HelperText>Your Anthropic API key. Stored securely in memory only.</HelperText>
+              <HelperText>
+                {apiKeyConfigured
+                  ? 'Leave blank to keep the saved key. The current key is not shown.'
+                  : 'Your Anthropic API key is stored by the desktop app, not localStorage.'}
+              </HelperText>
               {saveError && <ErrorText>{saveError}</ErrorText>}
             </FieldGroup>
 
-            <FieldGroup>
+            <FieldGroup $gap="xs">
               <Label htmlFor="api-endpoint">
                 <LabelIcon><FaServer size={12} /></LabelIcon>
                 API Endpoint
@@ -399,12 +412,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               <HelperText>Anthropic API endpoint. Change for proxy usage.</HelperText>
             </FieldGroup>
 
-            <FieldGroup>
+            <FieldGroup $gap="xs">
               <Label htmlFor="model">
                 <LabelIcon><FaRobot size={12} /></LabelIcon>
                 Model
               </Label>
-              <ModelControlRow>
+              <ModelControlRow $gap="sm">
                 <Select
                   id="model"
                   value={model}
@@ -439,15 +452,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             </FieldGroup>
           </Section>
 
-          <Section>
+          <Section $gap="md">
             <SectionTitle>Appearance</SectionTitle>
 
-            <FieldGroup>
+            <FieldGroup $gap="xs">
               <Label>
                 <LabelIcon><FaPalette size={12} /></LabelIcon>
                 Theme
               </Label>
-              <ThemeToggleGroup>
+              <ThemeToggleGroup $gap="sm">
                 <ThemeButton
                   $active={theme === 'dark'}
                   onClick={() => setThemeLocal('dark')}
@@ -467,7 +480,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
           </Section>
         </ModalBody>
 
-        <ModalFooter>
+        <ModalFooter $justify="flex-end" $gap="sm">
           <CancelButton onClick={onClose}>Cancel</CancelButton>
           <SaveButton onClick={handleSave} disabled={isSaving}>
             <FaFloppyDisk size={13} />

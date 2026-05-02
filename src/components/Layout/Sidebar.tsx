@@ -10,35 +10,28 @@ import {
 } from 'react-icons/fa6';
 import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { Column, Row } from '@/components/common/Flex';
 
 // ─── Styled Components ──────────────────────────────────────
 
-const SidebarContainer = styled.aside<{ $collapsed: boolean }>`
+const SidebarContainer = styled(Column)<{ $collapsed: boolean }>`
   width: ${({ $collapsed }) => ($collapsed ? '0px' : '260px')};
   min-width: ${({ $collapsed }) => ($collapsed ? '0px' : '260px')};
   height: 100%;
   background-color: ${({ theme }) => theme.colors.sidebarBg};
   border-right: 1px solid ${({ theme }) => theme.colors.sidebarBorder};
-  display: flex;
-  flex-direction: column;
   overflow: hidden;
   transition: width ${({ theme }) => theme.transitions.normal},
     min-width ${({ theme }) => theme.transitions.normal};
 `;
 
-const SidebarHeader = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+const SidebarHeader = styled(Row)`
   padding: ${({ theme }) => theme.spacing.md} ${({ theme }) => theme.spacing.lg};
   border-bottom: 1px solid ${({ theme }) => theme.colors.sidebarBorder};
   min-height: 52px;
 `;
 
-const LogoArea = styled.div`
-  display: flex;
-  align-items: center;
-  gap: ${({ theme }) => theme.spacing.sm};
+const LogoArea = styled(Row)`
   font-size: ${({ theme }) => theme.typography.fontSize.md};
   font-weight: ${({ theme }) => theme.typography.fontWeight.semibold};
   color: ${({ theme }) => theme.colors.textPrimary};
@@ -103,10 +96,7 @@ const ConversationList = styled.div`
   padding: ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.sm};
 `;
 
-const ConversationItem = styled.button<{ $active: boolean }>`
-  display: flex;
-  align-items: center;
-  gap: ${({ theme }) => theme.spacing.sm};
+const ConversationItem = styled(Row).attrs({ as: 'button' })<{ $active: boolean }>`
   width: 100%;
   padding: ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.md};
   border-radius: ${({ theme }) => theme.borderRadius.md};
@@ -118,6 +108,7 @@ const ConversationItem = styled.button<{ $active: boolean }>`
   text-align: left;
   transition: all ${({ theme }) => theme.transitions.fast};
   position: relative;
+  min-height: 36px;
 
   &:hover {
     background-color: ${({ theme, $active }) =>
@@ -128,24 +119,31 @@ const ConversationItem = styled.button<{ $active: boolean }>`
 
 const ConversationTitle = styled.span`
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 `;
 
 const DeleteButton = styled.button`
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
   width: 24px;
   height: 24px;
+  min-width: 24px;
   border-radius: ${({ theme }) => theme.borderRadius.sm};
   color: ${({ theme }) => theme.colors.textTertiary};
   flex-shrink: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
   transition: all ${({ theme }) => theme.transitions.fast};
 
   ${ConversationItem}:hover & {
-    display: flex;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
   }
 
   &:hover {
@@ -231,8 +229,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings }) => {
 
   return (
     <SidebarContainer $collapsed={sidebarCollapsed}>
-      <SidebarHeader>
-        <LogoArea>
+      <SidebarHeader $align="center" $justify="space-between">
+        <LogoArea $align="center" $gap="sm">
           <LogoIcon>
             <FaComments size={14} />
           </LogoIcon>
@@ -259,6 +257,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings }) => {
           <ConversationItem
             key={conv.id}
             $active={conv.id === activeConversationId}
+            $align="center"
+            $gap="sm"
             onClick={() => setActiveConversation(conv.id)}
           >
             <FaComments size={12} />
