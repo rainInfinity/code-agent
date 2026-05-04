@@ -15,12 +15,15 @@ interface ChatState {
   activeConversationId: string | null;
   isStreaming: boolean;
   streamingMessageId: string | null;
+  selectedWorkDir: string | null;
 
   // Actions
-  createConversation: () => string;
+  createConversation: (workDir?: string) => string;
   setActiveConversation: (id: string) => void;
   deleteConversation: (id: string) => void;
   getActiveConversation: () => Conversation | undefined;
+  getFilteredConversations: () => Conversation[];
+  setSelectedWorkDir: (path: string | null) => void;
 
   // Message actions
   addMessage: (conversationId: string, message: Omit<Message, 'id' | 'timestamp'>) => string;
@@ -53,8 +56,9 @@ export const useChatStore = create<ChatState>()(
       activeConversationId: null,
       isStreaming: false,
       streamingMessageId: null,
+      selectedWorkDir: null,
 
-      createConversation: () => {
+      createConversation: (workDir?: string) => {
         const id = generateId();
         const conversation: Conversation = {
           id,
@@ -62,6 +66,7 @@ export const useChatStore = create<ChatState>()(
           messages: [],
           createdAt: Date.now(),
           updatedAt: Date.now(),
+          workDir,
         };
         set((state) => ({
           conversations: [conversation, ...state.conversations],
@@ -88,6 +93,14 @@ export const useChatStore = create<ChatState>()(
         const { conversations, activeConversationId } = get();
         return conversations.find((c) => c.id === activeConversationId);
       },
+
+      getFilteredConversations: () => {
+        const { conversations } = get();
+        // Filtering is done at the component level using useSettingsStore
+        return conversations;
+      },
+
+      setSelectedWorkDir: (path: string | null) => set({ selectedWorkDir: path }),
 
       addMessage: (conversationId: string, message: Omit<Message, 'id' | 'timestamp'>) => {
         const id = generateId();
@@ -149,9 +162,20 @@ export const useChatStore = create<ChatState>()(
               c.id === conversationId
                 ? {
                     ...c,
-                    messages: c.messages.map((m) =>
-                      m.id === messageId ? { ...m, content: m.content + delta } : m,
-                    ),
+                    messages: c.messages.map((m) => {
+                      if (m.id !== messageId) return m;
+                      const content = m.content + delta;
+                      const contentBlocks =
+                        m.contentBlocks && m.contentBlocks.length > 0
+                          ? m.contentBlocks.map((block, index) =>
+                              index === 0 && block.type === 'text'
+                                ? { ...block, text: content }
+                                : block,
+                            )
+                          : [{ type: 'text' as const, text: content }];
+
+                      return { ...m, content, contentBlocks };
+                    }),
                   }
                 : c,
             ),

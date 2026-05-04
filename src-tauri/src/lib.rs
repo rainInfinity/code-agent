@@ -1,3 +1,4 @@
+mod agent;
 mod commands;
 mod llm;
 mod models;
@@ -160,6 +161,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::send_message,
+            commands::run_agent,
+            commands::stop_agent,
             commands::stop_streaming,
             commands::save_settings,
             commands::load_settings,

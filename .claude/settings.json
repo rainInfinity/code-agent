@@ -1,11 +1,26 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx openspec *)"
+      "Bash(npx openspec *)",
+      "Bash(openspec new *)",
+      "Bash(openspec instructions *)",
+      "Bash(Get-ChildItem \"F:\\\\project\\\\code-agent\\\\openspec\\\\specs\\\\chat-scroll-window\\\\spec.md\")",
+      "Bash(Select-Object Name, Length)",
+      "PowerShell(if \\(-not \\(Test-Path \"openspec/changes/archive\"\\)\\) { New-Item -ItemType Directory -Path \"openspec/changes/archive\" -Force | Out-Null }; if \\(Test-Path \"openspec/changes/archive/2026-05-04-improve-chat-scroll-window-state\"\\) { Write-Output \"EXISTS\" } else { Move-Item -Path \"openspec/changes/improve-chat-scroll-window-state\" -Destination \"openspec/changes/archive/2026-05-04-improve-chat-scroll-window-state\" -Force; Write-Output \"MOVED\" })",
+      "Bash(npx tsc *)",
+      "Bash(Get-ChildItem \"F:\\\\project\\\\code-agent\\\\openspec\\\\specs\\\\chat-interactions\\\\spec.md\")",
+      "PowerShell(if \\(-not \\(Test-Path \"openspec/changes/archive\"\\)\\) { New-Item -ItemType Directory -Path \"openspec/changes/archive\" -Force | Out-Null }; if \\(Test-Path \"openspec/changes/archive/2026-05-04-polish-gemini-chat-interactions\"\\) { Write-Output \"EXISTS\" } else { Move-Item -Path \"openspec/changes/polish-gemini-chat-interactions\" -Destination \"openspec/changes/archive/2026-05-04-polish-gemini-chat-interactions\" -Force; Write-Output \"MOVED\" })",
+      "Bash(Get-ChildItem -Recurse -Path \"F:\\\\project\\\\code-agent\\\\openspec\\\\changes\\\\multi-provider-api-config\")",
+      "Bash(Select-Object Mode, FullName)",
+      "PowerShell(New-Item -ItemType Directory -Path \"F:\\\\project\\\\code-agent\\\\openspec\\\\specs\\\\provider-config\" -Force)",
+      "PowerShell(if \\(-not \\(Test-Path \"openspec/changes/archive\"\\)\\) { New-Item -ItemType Directory -Path \"openspec/changes/archive\" -Force | Out-Null }; if \\(Test-Path \"openspec/changes/archive/2026-05-04-multi-provider-api-config\"\\) { Write-Output \"EXISTS\" } else { Move-Item -Path \"openspec/changes/multi-provider-api-config\" -Destination \"openspec/changes/archive/2026-05-04-multi-provider-api-config\" -Force; Write-Output \"MOVED\" })",
+      "PowerShell(Move-Item -Path \"openspec/changes/add-frameless-custom-titlebar\" -Destination \"openspec/changes/archive/2026-05-04-add-frameless-custom-titlebar\" -Force)"
     ],
     "additionalDirectories": [
       "F:\\project\\code-agent\\openspec\\changes\\multi-provider-api-config\\specs",
-      "f:\\project\\code-agent\\openspec\\changes\\improve-chat-scroll-window-state\\specs"
+      "f:\\project\\code-agent\\openspec\\changes\\improve-chat-scroll-window-state\\specs",
+      "F:\\project\\code-agent\\openspec\\specs",
+      "F:\\project\\code-agent\\openspec\\changes\\archive"
     ]
   }
 }

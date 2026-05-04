@@ -5,6 +5,7 @@ import { useChatStore } from "@/stores/chatStore";
 import { Row, Column } from "@/components/common/Flex";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { messages as appMessages } from "@/i18n";
+import type { Message } from "@/types";
 
 const DISENGAGE_AUTO_FOLLOW_PX = 150;
 const REENGAGE_AUTO_FOLLOW_PX = 50;
@@ -201,6 +202,46 @@ const ErrorMessage = styled.div`
   border: 1px solid ${({ theme }) => `${theme.colors.error}30`};
 `;
 
+const ToolPanel = styled.details`
+  margin: ${({ theme }) => theme.spacing.sm} 0;
+  border: 1px solid ${({ theme }) => theme.colors.border};
+  border-radius: ${({ theme }) => theme.borderRadius.md};
+  background-color: ${({ theme }) => theme.colors.bgSecondary};
+  text-align: left;
+
+  summary {
+    cursor: pointer;
+    padding: ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.md};
+    color: ${({ theme }) => theme.colors.textSecondary};
+    font-size: ${({ theme }) => theme.typography.fontSize.sm};
+    font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
+  }
+`;
+
+const ToolBody = styled.pre`
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
+  padding: ${({ theme }) => theme.spacing.md};
+  border-top: 1px solid ${({ theme }) => theme.colors.border};
+  color: ${({ theme }) => theme.colors.textPrimary};
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
+`;
+
+const ToolIndicator = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing.xs};
+  margin: ${({ theme }) => theme.spacing.sm} 0;
+  padding: ${({ theme }) => theme.spacing.xs} ${({ theme }) => theme.spacing.sm};
+  border-radius: ${({ theme }) => theme.borderRadius.md};
+  background-color: ${({ theme }) => theme.colors.bgSecondary};
+  color: ${({ theme }) => theme.colors.textSecondary};
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
+`;
+
 const makeStreamingMarkdownRenderable = (content: string) => {
   const fenceMatches = content.match(/(^|\n)\s*(```|~~~)/g) ?? [];
   if (fenceMatches.length % 2 === 1) {
@@ -212,7 +253,9 @@ const makeStreamingMarkdownRenderable = (content: string) => {
   return content;
 };
 
-const MessageBodyContent: React.FC<{ status: string; content: string }> = ({ status, content }) => {
+const MessageBodyContent: React.FC<{ message: Message }> = ({ message }) => {
+  const { status, content, toolCalls, toolResults } = message;
+
   if (status === "error") {
     return <ErrorMessage>{content || appMessages.messages.errorFallback}</ErrorMessage>;
   }
@@ -227,11 +270,26 @@ const MessageBodyContent: React.FC<{ status: string; content: string }> = ({ sta
     );
   }
 
-  if (status === "streaming") {
-    return <MarkdownRenderer content={makeStreamingMarkdownRenderable(content)} />;
-  }
-
-  return <MarkdownRenderer content={content} />;
+  return (
+    <>
+      {content ? (
+        <MarkdownRenderer
+          content={status === "streaming" ? makeStreamingMarkdownRenderable(content) : content}
+        />
+      ) : null}
+      {toolCalls?.map((toolCall) => (
+        <ToolIndicator key={toolCall.id}>Running {toolCall.name}...</ToolIndicator>
+      ))}
+      {toolResults?.map((toolResult) => (
+        <ToolPanel key={toolResult.toolCallId}>
+          <summary>
+            {toolResult.success ? "Tool result" : "Tool error"}: {toolResult.toolCallId}
+          </summary>
+          <ToolBody>{toolResult.error ?? toolResult.output}</ToolBody>
+        </ToolPanel>
+      ))}
+    </>
+  );
 };
 
 export const MessageList: React.FC = () => {
@@ -404,7 +462,7 @@ export const MessageList: React.FC = () => {
                       : appMessages.messages.roles.assistant}
                   </RoleName>
                   <MessageBody>
-                    <MessageBodyContent status={msg.status} content={msg.content} />
+                    <MessageBodyContent message={msg} />
                   </MessageBody>
                   <MessageActions $role={msg.role}>
                     <CopyButton

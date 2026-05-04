@@ -1,5 +1,5 @@
 use crate::models::*;
-use crate::providers::LlmProvider;
+use crate::providers::{LlmProvider, ParseResult};
 
 pub struct DeepSeekProvider;
 
@@ -28,7 +28,7 @@ impl LlmProvider for DeepSeekProvider {
         })
     }
 
-    fn parse_stream_data(&self, data: &str) -> Result<Option<String>, String> {
+    fn parse_stream_data(&self, data: &str) -> Result<Option<ParseResult>, String> {
         if data.trim() == "[DONE]" {
             return Ok(None);
         }
@@ -38,7 +38,8 @@ impl LlmProvider for DeepSeekProvider {
             .choices
             .first()
             .and_then(|choice| choice.delta.as_ref())
-            .and_then(|delta| delta.content.clone()))
+            .and_then(|delta| delta.content.clone())
+            .map(ParseResult::TextDelta))
     }
 
     fn parse_models_response(&self, body: &str) -> Result<Vec<ModelInfo>, String> {

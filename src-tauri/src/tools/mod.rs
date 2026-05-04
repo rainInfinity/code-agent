@@ -1,26 +1,19 @@
+pub mod executor;
+
 use crate::models::{ToolDefinition, ToolResult};
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-/// Trait defining a tool that can be executed by the agent
 #[async_trait]
 pub trait Tool: Send + Sync {
-    /// Unique name of the tool
     fn name(&self) -> String;
-
-    /// Human-readable description
     fn description(&self) -> String;
-
-    /// JSON Schema for the tool's parameters
     fn parameters_schema(&self) -> Value;
-
-    /// Execute the tool with the given parameters
     async fn execute(&self, params: Value) -> Result<ToolResult, String>;
 }
 
-/// Registry of available tools
 pub struct ToolRegistry {
     tools: HashMap<String, Arc<dyn Tool>>,
 }
@@ -32,30 +25,31 @@ impl ToolRegistry {
         }
     }
 
-    /// Register a tool
+    pub fn with_defaults() -> Self {
+        let mut registry = Self::new();
+        registry.register(Arc::new(EchoTool));
+        registry
+    }
+
     pub fn register(&mut self, tool: Arc<dyn Tool>) {
         self.tools.insert(tool.name(), tool);
     }
 
-    /// Find a tool by name
     pub fn get(&self, name: &str) -> Option<Arc<dyn Tool>> {
         self.tools.get(name).cloned()
     }
 
-    /// Get all tool definitions for LLM
     pub fn definitions(&self) -> Vec<ToolDefinition> {
         self.tools
             .values()
-            .map(|t| ToolDefinition {
-                name: t.name(),
-                description: t.description(),
-                parameters: t.parameters_schema(),
+            .map(|tool| ToolDefinition {
+                name: tool.name(),
+                description: tool.description(),
+                parameters: tool.parameters_schema(),
             })
             .collect()
     }
 }
-
-// ─── Echo Tool (for testing) ────────────────────────────────
 
 pub struct EchoTool;
 
@@ -85,7 +79,7 @@ impl Tool for EchoTool {
     async fn execute(&self, params: Value) -> Result<ToolResult, String> {
         let message = params
             .get("message")
-            .and_then(|v| v.as_str())
+            .and_then(|value| value.as_str())
             .unwrap_or("(empty)");
 
         Ok(ToolResult {

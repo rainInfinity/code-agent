@@ -1,11 +1,33 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContentBlock {
+    Text {
+        text: String,
+    },
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    ToolResult {
+        tool_use_id: String,
+        content: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        is_error: Option<bool>,
+    },
+}
+
 /// A single message in the conversation
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChatMessage {
     pub role: String,
     pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_blocks: Option<Vec<ContentBlock>>,
 }
 
 /// Payload from frontend for sending messages
@@ -16,6 +38,17 @@ pub struct SendMessagePayload {
     pub conversation_id: String,
     pub assistant_message_id: String,
     pub messages: Vec<ChatMessage>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunAgentPayload {
+    pub provider_id: String,
+    pub conversation_id: String,
+    pub assistant_message_id: String,
+    pub messages: Vec<ChatMessage>,
+    #[serde(default)]
+    pub max_turns: Option<usize>,
 }
 
 /// Settings payload from frontend
@@ -165,13 +198,15 @@ pub fn default_provider_id() -> String {
 pub struct AnthropicRequest {
     pub model: String,
     pub max_tokens: u32,
-    pub messages: Vec<ChatMessage>,
+    pub messages: Vec<serde_json::Value>,
     pub stream: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tools: Vec<ToolDefinition>,
 }
 
 /// Anthropic content block
 #[derive(Debug, Deserialize)]
-pub struct ContentBlock {
+pub struct AnthropicContentBlock {
     #[serde(rename = "type")]
     pub block_type: String,
     #[serde(default)]
@@ -181,7 +216,7 @@ pub struct ContentBlock {
 /// Anthropic non-streaming response
 #[derive(Debug, Deserialize)]
 pub struct AnthropicResponse {
-    pub content: Vec<ContentBlock>,
+    pub content: Vec<AnthropicContentBlock>,
     #[serde(default)]
     pub stop_reason: Option<String>,
 }
@@ -191,23 +226,16 @@ pub struct AnthropicResponse {
 #[serde(tag = "type")]
 pub enum StreamEvent {
     #[serde(rename = "message_start")]
-    MessageStart {
-        message: serde_json::Value,
-    },
+    MessageStart { message: serde_json::Value },
     #[serde(rename = "content_block_start")]
     ContentBlockStart {
         index: usize,
         content_block: serde_json::Value,
     },
     #[serde(rename = "content_block_delta")]
-    ContentBlockDelta {
-        index: usize,
-        delta: ContentDelta,
-    },
+    ContentBlockDelta { index: usize, delta: ContentDelta },
     #[serde(rename = "content_block_stop")]
-    ContentBlockStop {
-        index: usize,
-    },
+    ContentBlockStop { index: usize },
     #[serde(rename = "message_delta")]
     MessageDelta {
         delta: serde_json::Value,
@@ -218,9 +246,7 @@ pub enum StreamEvent {
     #[serde(rename = "ping")]
     Ping,
     #[serde(rename = "error")]
-    Error {
-        error: ApiError,
-    },
+    Error { error: ApiError },
 }
 
 #[derive(Debug, Deserialize)]
@@ -229,6 +255,17 @@ pub struct ContentDelta {
     pub delta_type: String,
     #[serde(default)]
     pub text: String,
+    #[serde(default)]
+    pub input_json_delta: String,
+    #[serde(default)]
+    pub tool_use: Option<ToolUseInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolUseInfo {
+    pub id: String,
+    pub name: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -262,6 +299,54 @@ pub struct StreamErrorEvent {
     pub conversation_id: String,
     pub message_id: String,
     pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentStatus {
+    Idle,
+    Running,
+    Complete,
+    Cancelled,
+    MaxTurnsReached,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallEvent {
+    pub conversation_id: String,
+    pub message_id: String,
+    pub tool_call_id: String,
+    pub name: String,
+    pub input: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolResultEvent {
+    pub conversation_id: String,
+    pub message_id: String,
+    pub tool_call_id: String,
+    pub result: ToolResult,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentTurnEvent {
+    pub conversation_id: String,
+    pub session_id: String,
+    pub turn_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentCompleteEvent {
+    pub conversation_id: String,
+    pub session_id: String,
+    pub message_id: String,
+    pub status: AgentStatus,
+    pub reason: String,
 }
 
 // ─── Tool System Types ──────────────────────────────────────

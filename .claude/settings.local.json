@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(openspec list *)",
+      "Bash(openspec status *)",
+      "Bash(mkdir -p openspec/changes/archive)",
+      "Bash(mv openspec/changes/init-tauri-project openspec/changes/archive/2026-05-03-init-tauri-project)",
+      "Bash(mkdir -p openspec/specs/chat-ui-layout)",
+      "Bash(cp openspec/changes/stabilize-chat-ui-layout/specs/chat-ui-layout/spec.md openspec/specs/chat-ui-layout/spec.md)",
+      "Bash(mv openspec/changes/stabilize-chat-ui-layout openspec/changes/archive/2026-05-03-stabilize-chat-ui-layout)"
+    ]
+  }
+}

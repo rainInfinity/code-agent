@@ -2,10 +2,12 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { createDefaultProviders, getProvider } from '@/config/providers';
 import type {
+  AgentMode,
   ProviderApiKeyConfiguredMap,
   ProviderId,
   ProviderSettings,
   Settings,
+  WorkDir,
 } from '@/types';
 
 interface SettingsState extends Settings {
@@ -23,6 +25,9 @@ interface SettingsState extends Settings {
   setSidebarCollapsed: (collapsed: boolean) => void;
   toggleSidebar: () => void;
   isConfigured: () => boolean;
+  setAgentMode: (mode: AgentMode) => void;
+  addWorkingDirectory: (path: string) => void;
+  removeWorkingDirectory: (path: string) => void;
 }
 
 const defaultProviders = createDefaultProviders();
@@ -46,6 +51,8 @@ export const useSettingsStore = create<SettingsState>()(
       activeProviderDefinition: getProvider('anthropic'),
       theme: 'dark' as const,
       sidebarCollapsed: false,
+      agentMode: 'chat' as AgentMode,
+      workingDirectories: [] as WorkDir[],
 
       setApiKey: (apiKey: string) =>
         get().setProviderSettings(get().activeProviderId, { apiKey }),
@@ -104,6 +111,26 @@ export const useSettingsStore = create<SettingsState>()(
           providers[activeProviderId]?.apiKey.trim().length > 0
         );
       },
+
+      setAgentMode: (agentMode: AgentMode) => set({ agentMode }),
+
+      addWorkingDirectory: (path: string) =>
+        set((state) => {
+          const exists = state.workingDirectories.some((d) => d.path === path);
+          if (exists) return state;
+          const name = path.split(/[/\\]/).filter(Boolean).pop() ?? path;
+          return {
+            workingDirectories: [
+              ...state.workingDirectories,
+              { path, name, addedAt: Date.now() },
+            ],
+          };
+        }),
+
+      removeWorkingDirectory: (path: string) =>
+        set((state) => ({
+          workingDirectories: state.workingDirectories.filter((d) => d.path !== path),
+        })),
     }),
     {
       name: 'code-agent-settings',
@@ -117,6 +144,8 @@ export const useSettingsStore = create<SettingsState>()(
         ),
         theme: state.theme,
         sidebarCollapsed: state.sidebarCollapsed,
+        agentMode: state.agentMode,
+        workingDirectories: state.workingDirectories,
       }),
       merge: (persisted, current) => {
         const saved = persisted as Partial<SettingsState>;
@@ -133,6 +162,8 @@ export const useSettingsStore = create<SettingsState>()(
           activeProviderSettings: providers[activeProviderId],
           activeProviderDefinition: getProvider(activeProviderId),
           apiKeyConfigured: current.apiKeyConfigured,
+          agentMode: saved.agentMode ?? current.agentMode,
+          workingDirectories: saved.workingDirectories ?? current.workingDirectories,
         };
       },
     },

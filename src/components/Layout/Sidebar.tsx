@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import styled from 'styled-components';
 import {
   FaPlus,
   FaGear,
   FaComments,
   FaTrashCan,
+  FaCode,
+  FaFolder,
 } from 'react-icons/fa6';
 import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -179,6 +181,45 @@ const SettingsButton = styled.button`
   }
 `;
 
+const ModeIndicator = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing.xs};
+  padding: ${({ theme }) => theme.spacing.xs} ${({ theme }) => theme.spacing.md};
+  font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  color: ${({ theme }) => theme.colors.accentPrimary};
+  font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
+`;
+
+const WorkDirSelector = styled.div`
+  padding: ${({ theme }) => theme.spacing.xs} ${({ theme }) => theme.spacing.sm};
+`;
+
+const WorkDirSelect = styled.select`
+  width: 100%;
+  padding: ${({ theme }) => theme.spacing.xs} ${({ theme }) => theme.spacing.sm};
+  background-color: ${({ theme }) => theme.colors.sidebarHover};
+  border: 1px solid ${({ theme }) => theme.colors.sidebarBorder};
+  border-radius: ${({ theme }) => theme.borderRadius.sm};
+  color: ${({ theme }) => theme.colors.textPrimary};
+  font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  font-family: ${({ theme }) => theme.typography.fontFamily};
+  cursor: pointer;
+
+  &:focus {
+    border-color: ${({ theme }) => theme.colors.accentPrimary};
+    outline: none;
+  }
+`;
+
+const NoWorkDirHint = styled.div`
+  padding: ${({ theme }) => theme.spacing.md};
+  text-align: center;
+  font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  color: ${({ theme }) => theme.colors.textTertiary};
+  line-height: 1.5;
+`;
+
 interface SidebarProps {
   onOpenSettings: () => void;
 }
@@ -187,27 +228,103 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings }) => {
   const {
     conversations,
     activeConversationId,
+    selectedWorkDir,
     setActiveConversation,
+    setSelectedWorkDir,
     createConversation,
     deleteConversation,
   } = useChatStore();
 
-  const { sidebarCollapsed } = useSettingsStore();
+  const {
+    sidebarCollapsed,
+    agentMode,
+    workingDirectories,
+  } = useSettingsStore();
+
+  // Sync selectedWorkDir: auto-select first work dir in code mode
+  const effectiveWorkDir = agentMode === 'code'
+    ? (selectedWorkDir && workingDirectories.some((d) => d.path === selectedWorkDir)
+        ? selectedWorkDir
+        : workingDirectories[0]?.path ?? null)
+    : null;
+
+  const filteredConversations = useMemo(() => {
+    if (agentMode === 'code' && effectiveWorkDir) {
+      return conversations.filter((c) => c.workDir === effectiveWorkDir);
+    }
+    return conversations;
+  }, [conversations, agentMode, effectiveWorkDir]);
+
+  const handleCreateConversation = () => {
+    if (agentMode === 'code') {
+      if (!effectiveWorkDir) return;
+      createConversation(effectiveWorkDir);
+    } else {
+      createConversation();
+    }
+  };
+
+  const handleSelectWorkDir = (path: string) => {
+    setSelectedWorkDir(path);
+    const dirConvs = conversations.filter((c) => c.workDir === path);
+    const activeInDir = dirConvs.some((c) => c.id === activeConversationId);
+    if (!activeInDir) {
+      setActiveConversation(dirConvs[0]?.id ?? '');
+    }
+  };
+
   const collapsedTabIndex = sidebarCollapsed ? -1 : 0;
+  const isCodeMode = agentMode === 'code';
+  const canCreateChat = !isCodeMode || (isCodeMode && effectiveWorkDir !== null);
 
   return (
     <>
       <SidebarContainer $collapsed={sidebarCollapsed} aria-hidden={sidebarCollapsed}>
         <SidebarContent $collapsed={sidebarCollapsed}>
+          {isCodeMode && (
+            <ModeIndicator>
+              <FaCode size={10} />
+              {messages.settings.modeOptions.code}
+            </ModeIndicator>
+          )}
+
+          {isCodeMode && workingDirectories.length > 0 && (
+            <WorkDirSelector>
+              <WorkDirSelect
+                value={effectiveWorkDir ?? ''}
+                onChange={(e) => handleSelectWorkDir(e.target.value)}
+                tabIndex={collapsedTabIndex}
+              >
+                {workingDirectories.map((dir) => (
+                  <option key={dir.path} value={dir.path}>
+                    {dir.name}
+                  </option>
+                ))}
+              </WorkDirSelect>
+            </WorkDirSelector>
+          )}
+
+          {isCodeMode && workingDirectories.length === 0 && (
+            <NoWorkDirHint>
+              <FaFolder size={16} style={{ opacity: 0.3, marginBottom: 6 }} />
+              <div>{messages.settings.noWorkDir}</div>
+            </NoWorkDirHint>
+          )}
+
           <SidebarActions>
-            <NewChatButton onClick={() => createConversation()} tabIndex={collapsedTabIndex}>
+            <NewChatButton
+              onClick={handleCreateConversation}
+              tabIndex={collapsedTabIndex}
+              disabled={!canCreateChat}
+              style={!canCreateChat ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
+            >
               <FaPlus size={12} />
               {messages.sidebar.newChat}
             </NewChatButton>
           </SidebarActions>
 
           <ConversationList>
-            {conversations.map((conv) => (
+            {filteredConversations.map((conv) => (
               <ConversationItem
                 key={conv.id}
                 $active={conv.id === activeConversationId}

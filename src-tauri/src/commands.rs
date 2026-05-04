@@ -1,11 +1,14 @@
+use crate::agent::{AgentConfig, AgentRuntime, AgentSession, TauriAgentEventEmitter};
 use crate::llm::LlmClient;
 use crate::models::*;
 use crate::providers::{built_in_provider_ids, default_endpoint, default_model};
+use crate::tools::ToolRegistry;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
+use tokio_util::sync::CancellationToken;
 
 const SETTINGS_FILE: &str = "settings.json";
 
@@ -13,6 +16,8 @@ const SETTINGS_FILE: &str = "settings.json";
 pub struct AppState {
     pub active_provider_id: Mutex<String>,
     pub provider_settings: Mutex<HashMap<String, ProviderSettings>>,
+    pub agent_runtime: Arc<AgentRuntime>,
+    pub tool_registry: Arc<ToolRegistry>,
 }
 
 impl AppState {
@@ -23,6 +28,8 @@ impl AppState {
         Self {
             active_provider_id: Mutex::new(saved.active_provider_id),
             provider_settings: Mutex::new(saved.providers),
+            agent_runtime: Arc::new(AgentRuntime::new()),
+            tool_registry: Arc::new(ToolRegistry::with_defaults()),
         }
     }
 }
@@ -117,6 +124,65 @@ pub async fn send_message(
             );
             Err(e)
         }
+    }
+}
+
+#[tauri::command]
+pub async fn run_agent(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    payload: RunAgentPayload,
+) -> Result<String, String> {
+    let provider_id = if payload.provider_id.trim().is_empty() {
+        state.active_provider_id.lock().unwrap().clone()
+    } else {
+        payload.provider_id.clone()
+    };
+    let settings = {
+        let provider_settings = state.provider_settings.lock().unwrap();
+        provider_settings
+            .get(&provider_id)
+            .cloned()
+            .unwrap_or_else(|| default_provider_settings(&provider_id))
+    };
+
+    if settings.api_key.is_empty() {
+        return Err("API key not configured. Please set your API key in Settings.".to_string());
+    }
+
+    let llm_client = LlmClient::new(
+        &provider_id,
+        &settings.api_key,
+        &settings.api_endpoint,
+        &settings.model,
+    );
+
+    let config = AgentConfig {
+        max_turns: payload.max_turns.unwrap_or(30),
+        ..AgentConfig::default()
+    };
+    let cancel_token = CancellationToken::new();
+    let emitter = Arc::new(TauriAgentEventEmitter::new(app));
+    let session = AgentSession::new(
+        payload.conversation_id,
+        payload.assistant_message_id,
+        payload.messages,
+        config,
+        llm_client,
+        state.tool_registry.clone(),
+        emitter,
+        cancel_token,
+    );
+
+    Ok(state.agent_runtime.start(session))
+}
+
+#[tauri::command]
+pub async fn stop_agent(state: State<'_, AppState>, session_id: String) -> Result<(), String> {
+    if state.agent_runtime.cancel(&session_id) {
+        Ok(())
+    } else {
+        Err(format!("No active agent session: {}", session_id))
     }
 }
 
@@ -249,10 +315,9 @@ fn read_settings(app: &AppHandle) -> Result<PersistedSettings, String> {
         return Ok(PersistedSettings::default());
     }
 
-    let contents = fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read settings file: {}", e))?;
-    serde_json::from_str(&contents)
-        .map_err(|e| format!("Failed to parse settings file: {}", e))
+    let contents =
+        fs::read_to_string(&path).map_err(|e| format!("Failed to read settings file: {}", e))?;
+    serde_json::from_str(&contents).map_err(|e| format!("Failed to parse settings file: {}", e))
 }
 
 fn write_settings(app: &AppHandle, settings: &PersistedSettings) -> Result<(), String> {

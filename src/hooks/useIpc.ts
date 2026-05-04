@@ -9,6 +9,10 @@ import type {
   StreamEvent,
   StreamEndEvent,
   StreamErrorEvent,
+  ToolCallEvent,
+  ToolResultEvent,
+  AgentTurnEvent,
+  AgentCompleteEvent,
 } from '@/types';
 
 // ─── Commands (Frontend → Backend) ──────────────────────────
@@ -23,6 +27,10 @@ export interface SendMessagePayload {
   }>;
 }
 
+export interface RunAgentPayload extends SendMessagePayload {
+  maxTurns?: number;
+}
+
 /** Send a message to the LLM via Rust backend */
 export async function sendMessage(payload: SendMessagePayload): Promise<void> {
   return invoke('send_message', { payload });
@@ -31,6 +39,14 @@ export async function sendMessage(payload: SendMessagePayload): Promise<void> {
 /** Stop the current streaming response */
 export async function stopStreaming(conversationId: string): Promise<void> {
   return invoke('stop_streaming', { conversationId });
+}
+
+export async function runAgent(payload: RunAgentPayload): Promise<string> {
+  return invoke('run_agent', { payload });
+}
+
+export async function stopAgent(sessionId: string): Promise<void> {
+  return invoke('stop_agent', { sessionId });
 }
 
 /** Save settings to the Rust backend */
@@ -88,4 +104,22 @@ export async function onStreamError(
   callback: (event: StreamErrorEvent) => void,
 ): Promise<UnlistenFn> {
   return listen<StreamErrorEvent>('stream-error', (e) => callback(e.payload));
+}
+
+export async function onToolCall(callback: (event: ToolCallEvent) => void): Promise<UnlistenFn> {
+  return listen<ToolCallEvent>('tool-call', (e) => callback(e.payload));
+}
+
+export async function onToolResult(callback: (event: ToolResultEvent) => void): Promise<UnlistenFn> {
+  return listen<ToolResultEvent>('tool-result', (e) => callback(e.payload));
+}
+
+export async function onAgentTurn(callback: (event: AgentTurnEvent) => void): Promise<UnlistenFn> {
+  return listen<AgentTurnEvent>('agent-turn', (e) => callback(e.payload));
+}
+
+export async function onAgentComplete(
+  callback: (event: AgentCompleteEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<AgentCompleteEvent>('agent-complete', (e) => callback(e.payload));
 }

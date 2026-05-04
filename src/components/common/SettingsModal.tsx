@@ -10,6 +10,11 @@ import {
   FaMoon,
   FaFloppyDisk,
   FaRotate,
+  FaCode,
+  FaComments,
+  FaFolder,
+  FaFolderOpen,
+  FaTrashCan,
 } from 'react-icons/fa6';
 import { SiAnthropic, SiOpenai } from 'react-icons/si';
 import type { IconType } from 'react-icons';
@@ -281,6 +286,97 @@ const ThemeButton = styled.button<{ $active: boolean }>`
   }
 `;
 
+const ModeToggleGroup = styled(Row)``;
+
+const ModeButton = styled.button<{ $active: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing.sm};
+  flex: 1;
+  padding: ${({ theme }) => theme.spacing.md};
+  border-radius: ${({ theme }) => theme.borderRadius.md};
+  border: 1px solid ${({ theme, $active }) =>
+    $active ? theme.colors.accentPrimary : theme.colors.border};
+  background-color: ${({ theme, $active }) =>
+    $active ? `${theme.colors.accentPrimary}15` : 'transparent'};
+  color: ${({ theme, $active }) =>
+    $active ? theme.colors.accentPrimary : theme.colors.textSecondary};
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
+  font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
+  transition: all ${({ theme }) => theme.transitions.fast};
+  cursor: pointer;
+
+  &:hover {
+    border-color: ${({ theme }) => theme.colors.accentPrimary};
+    color: ${({ theme }) => theme.colors.accentPrimary};
+  }
+`;
+
+const ModeDescription = styled.span`
+  font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  color: ${({ theme }) => theme.colors.textTertiary};
+  line-height: 1.4;
+`;
+
+const WorkDirInputRow = styled(Row)``;
+
+const WorkDirInput = styled(Input)`
+  flex: 1;
+`;
+
+const WorkDirList = styled(Column)`
+  max-height: 120px;
+  overflow-y: auto;
+`;
+
+const WorkDirItem = styled(Row)`
+  padding: ${({ theme }) => theme.spacing.xs} ${({ theme }) => theme.spacing.sm};
+  border-radius: ${({ theme }) => theme.borderRadius.sm};
+  font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  color: ${({ theme }) => theme.colors.textSecondary};
+  background-color: ${({ theme }) => theme.colors.bgHover};
+  transition: background-color ${({ theme }) => theme.transitions.fast};
+
+  &:hover {
+    background-color: ${({ theme }) => theme.colors.bgActive};
+  }
+`;
+
+const WorkDirName = styled.span`
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
+  color: ${({ theme }) => theme.colors.textPrimary};
+`;
+
+const WorkDirPath = styled.span`
+  font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  color: ${({ theme }) => theme.colors.textTertiary};
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
+const RemoveDirButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  border-radius: ${({ theme }) => theme.borderRadius.sm};
+  color: ${({ theme }) => theme.colors.textTertiary};
+  transition: all ${({ theme }) => theme.transitions.fast};
+
+  &:hover {
+    color: ${({ theme }) => theme.colors.error};
+    background-color: ${({ theme }) => theme.colors.bgActive};
+  }
+`;
+
 const ModalFooter = styled(Row)`
   padding: ${({ theme }) => theme.spacing.lg} ${({ theme }) => theme.spacing.xl};
   border-top: 1px solid ${({ theme }) => theme.colors.divider};
@@ -383,6 +479,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const [apiEndpoint, setApiEndpoint] = useState(settings.activeProviderSettings.apiEndpoint);
   const [model, setModel] = useState(settings.activeProviderSettings.model);
   const [theme, setThemeLocal] = useState(settings.theme);
+  const [agentMode, setAgentModeLocal] = useState(settings.agentMode);
+  const [workDirInput, setWorkDirInput] = useState('');
+  const [workingDirs, setWorkingDirs] = useState(settings.workingDirectories);
   const [apiKeyConfigured, setApiKeyConfigured] = useState(settings.apiKeyConfigured);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -465,6 +564,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     setModelError(null);
   };
 
+  const handleAddWorkDir = () => {
+    const trimmed = workDirInput.trim();
+    if (!trimmed) return;
+    if (workingDirs.some((d) => d.path === trimmed)) return;
+    const name = trimmed.split(/[/\\]/).filter(Boolean).pop() ?? trimmed;
+    setWorkingDirs((prev) => [...prev, { path: trimmed, name, addedAt: Date.now() }]);
+    setWorkDirInput('');
+  };
+
+  const handleRemoveWorkDir = (path: string) => {
+    setWorkingDirs((prev) => prev.filter((d) => d.path !== path));
+  };
+
+  const handleWorkDirInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleAddWorkDir();
+    }
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     setSaveError(null);
@@ -493,6 +612,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         activeProviderSettings: nextProviderSettings,
         activeProviderDefinition: getProvider(providerId),
         apiKeyConfigured: nextConfigured,
+        agentMode,
+        workingDirectories: workingDirs,
       });
       setApiKey('');
       setApiKeyConfigured(nextConfigured);
@@ -665,6 +786,83 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               </HelperText>
               {modelError && <ErrorText>{modelError}</ErrorText>}
             </FieldGroup>
+          </Section>
+
+          <Section $gap="md">
+            <SectionTitle>{messages.settings.mode}</SectionTitle>
+
+            <ModeToggleGroup $gap="sm">
+              <ModeButton
+                $active={agentMode === 'chat'}
+                onClick={() => setAgentModeLocal('chat')}
+              >
+                <FaComments size={16} />
+                <span>{messages.settings.modeOptions.chat}</span>
+              </ModeButton>
+              <ModeButton
+                $active={agentMode === 'code'}
+                onClick={() => setAgentModeLocal('code')}
+              >
+                <FaCode size={16} />
+                <span>{messages.settings.modeOptions.code}</span>
+              </ModeButton>
+            </ModeToggleGroup>
+
+            <ModeDescription>
+              {agentMode === 'chat'
+                ? messages.settings.modeDescription.chat
+                : messages.settings.modeDescription.code}
+            </ModeDescription>
+
+            {agentMode === 'code' && (
+              <>
+                <FieldGroup $gap="xs">
+                  <Label>
+                    <LabelIcon><FaFolder size={12} /></LabelIcon>
+                    {messages.settings.workDir}
+                  </Label>
+                  <WorkDirInputRow $gap="sm">
+                    <WorkDirInput
+                      type="text"
+                      value={workDirInput}
+                      onChange={(e) => setWorkDirInput(e.target.value)}
+                      onKeyDown={handleWorkDirInputKeyDown}
+                      placeholder={messages.settings.workDirPlaceholder}
+                    />
+                    <IconButton
+                      onClick={handleAddWorkDir}
+                      disabled={!workDirInput.trim()}
+                      title={messages.settings.workDirBrowse}
+                      aria-label={messages.settings.workDirBrowse}
+                    >
+                      <FaFolderOpen size={13} />
+                    </IconButton>
+                  </WorkDirInputRow>
+                  <HelperText>{messages.settings.workDirHint}</HelperText>
+                </FieldGroup>
+
+                {workingDirs.length > 0 && (
+                  <WorkDirList $gap="xs">
+                    {workingDirs.map((dir) => (
+                      <WorkDirItem key={dir.path} $align="center" $gap="sm">
+                        <FaFolder size={12} />
+                        <Column $gap="xs">
+                          <WorkDirName>{dir.name}</WorkDirName>
+                          <WorkDirPath>{dir.path}</WorkDirPath>
+                        </Column>
+                        <RemoveDirButton
+                          onClick={() => handleRemoveWorkDir(dir.path)}
+                          title="移除工作目录"
+                          aria-label="移除工作目录"
+                        >
+                          <FaTrashCan size={10} />
+                        </RemoveDirButton>
+                      </WorkDirItem>
+                    ))}
+                  </WorkDirList>
+                )}
+              </>
+            )}
           </Section>
 
           <Section $gap="md">
