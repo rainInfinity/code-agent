@@ -1,8 +1,8 @@
 use crate::agent::session::AgentSession;
 use crate::llm::ToolCall;
 use crate::models::{
-    AgentCompleteEvent, AgentStatus, AgentTurnEvent, ContentBlock, StreamDeltaEvent, ToolCallEvent,
-    ToolResult, ToolResultEvent,
+    AgentCompleteEvent, AgentStatus, AgentTurnEvent, ContentBlock, StreamDeltaEvent,
+    StreamThinkingEvent, ToolCallEvent, ToolResult, ToolResultEvent,
 };
 use crate::tools::executor::ToolExecutor;
 use std::collections::HashMap;
@@ -88,6 +88,18 @@ pub async fn agent_loop(session: &mut AgentSession) -> Result<AgentStatus, Strin
                     let emitter = emitter.clone();
                     move |delta| {
                         emitter.emit_text_delta(StreamDeltaEvent {
+                            conversation_id: conversation_id.clone(),
+                            message_id: message_id.clone(),
+                            delta,
+                        });
+                    }
+                },
+                {
+                    let conversation_id = conversation_id.clone();
+                    let message_id = message_id.clone();
+                    let emitter = emitter.clone();
+                    move |delta| {
+                        emitter.emit_thinking_delta(StreamThinkingEvent {
                             conversation_id: conversation_id.clone(),
                             message_id: message_id.clone(),
                             delta,

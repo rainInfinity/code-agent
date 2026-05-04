@@ -29,7 +29,10 @@ impl ToolExecutor {
             Err(_) => ToolResult {
                 success: false,
                 output: String::new(),
-                error: Some(format!("Tool timed out after {} seconds", self.timeout_secs)),
+                error: Some(format!(
+                    "Tool timed out after {} seconds",
+                    self.timeout_secs
+                )),
             },
         }
     }

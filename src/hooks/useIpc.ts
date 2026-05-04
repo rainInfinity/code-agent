@@ -7,6 +7,7 @@ import type {
   ProviderId,
   ProviderSettingsMap,
   StreamEvent,
+  StreamThinkingEvent,
   StreamEndEvent,
   StreamErrorEvent,
   ToolCallEvent,
@@ -90,6 +91,13 @@ export async function onStreamDelta(
   callback: (event: StreamEvent) => void,
 ): Promise<UnlistenFn> {
   return listen<StreamEvent>('stream-delta', (e) => callback(e.payload));
+}
+
+/** Listen for streaming thinking tokens */
+export async function onThinkingDelta(
+  callback: (event: StreamThinkingEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<StreamThinkingEvent>('thinking-delta', (e) => callback(e.payload));
 }
 
 /** Listen for stream completion */

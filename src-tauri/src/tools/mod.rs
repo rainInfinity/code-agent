@@ -72,7 +72,8 @@ impl Tool for EchoTool {
                     "description": "The message to echo back"
                 }
             },
-            "required": ["message"]
+            "required": ["message"],
+            "additionalProperties": false
         })
     }
 

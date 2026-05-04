@@ -14,13 +14,18 @@
       "Bash(Select-Object Mode, FullName)",
       "PowerShell(New-Item -ItemType Directory -Path \"F:\\\\project\\\\code-agent\\\\openspec\\\\specs\\\\provider-config\" -Force)",
       "PowerShell(if \\(-not \\(Test-Path \"openspec/changes/archive\"\\)\\) { New-Item -ItemType Directory -Path \"openspec/changes/archive\" -Force | Out-Null }; if \\(Test-Path \"openspec/changes/archive/2026-05-04-multi-provider-api-config\"\\) { Write-Output \"EXISTS\" } else { Move-Item -Path \"openspec/changes/multi-provider-api-config\" -Destination \"openspec/changes/archive/2026-05-04-multi-provider-api-config\" -Force; Write-Output \"MOVED\" })",
-      "PowerShell(Move-Item -Path \"openspec/changes/add-frameless-custom-titlebar\" -Destination \"openspec/changes/archive/2026-05-04-add-frameless-custom-titlebar\" -Force)"
+      "PowerShell(Move-Item -Path \"openspec/changes/add-frameless-custom-titlebar\" -Destination \"openspec/changes/archive/2026-05-04-add-frameless-custom-titlebar\" -Force)",
+      "Bash(Get-ChildItem -Path . -Filter \".openspec.yaml\" -Recurse -Depth 3)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Get-ChildItem -Path \"f:/project/code-agent/openspec/changes/deepseek-anthropic-compat-and-ux-fixes\" -Recurse)",
+      "Bash(Select-Object Mode, Length, Name)"
     ],
     "additionalDirectories": [
       "F:\\project\\code-agent\\openspec\\changes\\multi-provider-api-config\\specs",
       "f:\\project\\code-agent\\openspec\\changes\\improve-chat-scroll-window-state\\specs",
       "F:\\project\\code-agent\\openspec\\specs",
-      "F:\\project\\code-agent\\openspec\\changes\\archive"
+      "F:\\project\\code-agent\\openspec\\changes\\archive",
+      "f:\\project\\code-agent\\openspec\\changes\\deepseek-anthropic-compat-and-ux-fixes"
     ]
   }
 }

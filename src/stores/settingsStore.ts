@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { createDefaultProviders, getProvider } from '@/config/providers';
+import { PROVIDER_IDS, createDefaultProviders, getProvider } from '@/config/providers';
 import type {
   AgentMode,
   ProviderApiKeyConfiguredMap,
@@ -34,7 +34,6 @@ const defaultProviders = createDefaultProviders();
 const defaultApiKeyConfigured: ProviderApiKeyConfiguredMap = {
   anthropic: false,
   deepseek: false,
-  openai: false,
 };
 
 function activeSettings(state: Pick<SettingsState, 'activeProviderId' | 'providers'>) {
@@ -149,7 +148,9 @@ export const useSettingsStore = create<SettingsState>()(
       }),
       merge: (persisted, current) => {
         const saved = persisted as Partial<SettingsState>;
-        const activeProviderId = saved.activeProviderId ?? current.activeProviderId;
+        const activeProviderId = PROVIDER_IDS.includes(saved.activeProviderId as ProviderId)
+          ? saved.activeProviderId as ProviderId
+          : current.activeProviderId;
         const providers = {
           ...createDefaultProviders(),
           ...saved.providers,

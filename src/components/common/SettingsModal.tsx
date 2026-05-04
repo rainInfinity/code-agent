@@ -11,7 +11,7 @@ import {
   FaFloppyDisk,
   FaRotate,
 } from 'react-icons/fa6';
-import { SiAnthropic, SiOpenai } from 'react-icons/si';
+import { SiAnthropic } from 'react-icons/si';
 import type { IconType } from 'react-icons';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { listModels, loadSettings, saveSettings, type ModelInfo } from '@/hooks/useIpc';
@@ -224,7 +224,7 @@ const ModelControlRow = styled(Row)``;
 
 const ProviderRadioGroup = styled.div`
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: ${({ theme }) => theme.spacing.sm};
 `;
 
@@ -433,7 +433,6 @@ const providerIcons: Record<ProviderId, IconType> = {
       <circle cx="9.2" cy="11.1" r="0.8" fill="currentColor" />
     </svg>
   ),
-  openai: SiOpenai,
 };
 
 type SettingsSection = 'general' | 'api';
@@ -478,7 +477,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   useEffect(() => {
     loadSettings()
       .then((loaded) => {
-        const nextProviderId = loaded.activeProviderId;
+        const nextProviderId = PROVIDER_IDS.includes(loaded.activeProviderId)
+          ? loaded.activeProviderId
+          : 'anthropic';
         const nextProviders = PROVIDER_IDS.reduce(
           (acc, id) => {
             const provider = loaded.providers[id];

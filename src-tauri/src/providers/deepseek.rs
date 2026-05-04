@@ -5,55 +5,100 @@ pub struct DeepSeekProvider;
 
 impl LlmProvider for DeepSeekProvider {
     fn chat_path(&self) -> &str {
-        "/v1/chat/completions"
+        "/v1/messages"
     }
 
     fn models_path(&self) -> &str {
-        "/v1/models"
+        "/v1/models?limit=1000"
     }
 
     fn auth_header(&self, api_key: &str) -> (String, String) {
-        ("Authorization".to_string(), format!("Bearer {}", api_key))
+        ("x-api-key".to_string(), api_key.to_string())
     }
 
     fn extra_headers(&self) -> Vec<(String, String)> {
-        Vec::new()
+        vec![("anthropic-version".to_string(), "2023-06-01".to_string())]
     }
 
     fn build_chat_request(&self, model: &str, messages: &[ChatMessage]) -> serde_json::Value {
-        serde_json::json!(OpenAiChatRequest {
+        let messages = messages
+            .iter()
+            .map(|message| {
+                let content = message
+                    .content_blocks
+                    .as_ref()
+                    .map(|blocks| {
+                        serde_json::to_value(blocks)
+                            .unwrap_or_else(|_| serde_json::json!(message.content))
+                    })
+                    .unwrap_or_else(|| serde_json::json!(message.content));
+                serde_json::json!({
+                    "role": message.role,
+                    "content": content,
+                })
+            })
+            .collect();
+
+        serde_json::json!(AnthropicRequest {
             model: model.to_string(),
-            messages: messages.to_vec(),
+            max_tokens: 4096,
+            messages,
             stream: true,
+            tools: Vec::new(),
         })
     }
 
     fn parse_stream_data(&self, data: &str) -> Result<Option<ParseResult>, String> {
-        if data.trim() == "[DONE]" {
-            return Ok(None);
-        }
-        let chunk = serde_json::from_str::<OpenAiStreamChunk>(data)
+        let event = serde_json::from_str::<StreamEvent>(data)
             .map_err(|e| format!("Failed to parse DeepSeek stream event: {}", e))?;
-        Ok(chunk
-            .choices
-            .first()
-            .and_then(|choice| choice.delta.as_ref())
-            .and_then(|delta| delta.content.clone())
-            .map(ParseResult::TextDelta))
+        match event {
+            StreamEvent::ContentBlockDelta { delta, .. } if delta.delta_type == "text_delta" => {
+                Ok(Some(ParseResult::TextDelta(delta.text)))
+            }
+            StreamEvent::ContentBlockDelta { delta, .. }
+                if delta.delta_type == "thinking_delta" =>
+            {
+                Ok(Some(ParseResult::ThinkingDelta(delta.thinking)))
+            }
+            StreamEvent::ContentBlockStart {
+                index,
+                content_block,
+            } => {
+                if content_block.get("type").and_then(|value| value.as_str()) == Some("tool_use") {
+                    let id = content_block
+                        .get("id")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or_default()
+                        .to_string();
+                    let name = content_block
+                        .get("name")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or_default()
+                        .to_string();
+                    Ok(Some(ParseResult::ToolUseStart { index, id, name }))
+                } else {
+                    Ok(None)
+                }
+            }
+            StreamEvent::ContentBlockDelta { index, delta }
+                if delta.delta_type == "input_json_delta" =>
+            {
+                Ok(Some(ParseResult::ToolUseDelta {
+                    index,
+                    input_json_delta: delta.input_json_delta,
+                }))
+            }
+            StreamEvent::ContentBlockStop { index } => {
+                Ok(Some(ParseResult::ToolUseComplete { index }))
+            }
+            StreamEvent::Error { error } => Err(format!("{}: {}", error.error_type, error.message)),
+            _ => Ok(None),
+        }
     }
 
     fn parse_models_response(&self, body: &str) -> Result<Vec<ModelInfo>, String> {
-        match serde_json::from_str::<OpenAiModelsResponse>(body) {
-            Ok(response) => Ok(response
-                .data
-                .into_iter()
-                .map(|model| ModelInfo {
-                    id: model.id.clone(),
-                    display_name: model.id,
-                    created_at: model.created.map(|v| v.to_string()).unwrap_or_default(),
-                    model_type: model.owned_by,
-                })
-                .collect()),
+        match serde_json::from_str::<ModelsResponse>(body) {
+            Ok(response) => Ok(response.data),
             Err(_) => Ok(vec![
                 ModelInfo {
                     id: "deepseek-chat".to_string(),

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Message, Conversation } from '@/types';
+import type { AgentMode, Message, Conversation } from '@/types';
 import { messages as appMessages } from '@/i18n';
 
 function generateId(): string {
@@ -19,8 +19,11 @@ interface ChatState {
 
   // Actions
   createConversation: (workDir?: string) => string;
-  setActiveConversation: (id: string) => void;
-  deleteConversation: (id: string) => void;
+  setActiveConversation: (id: string | null) => void;
+  deleteConversation: (
+    id: string,
+    fallbackFilter?: { agentMode: AgentMode; workDir?: string | null },
+  ) => void;
   getActiveConversation: () => Conversation | undefined;
   getFilteredConversations: () => Conversation[];
   setSelectedWorkDir: (path: string | null) => void;
@@ -29,6 +32,7 @@ interface ChatState {
   addMessage: (conversationId: string, message: Omit<Message, 'id' | 'timestamp'>) => string;
   updateMessage: (conversationId: string, messageId: string, updates: Partial<Message>) => void;
   appendToMessage: (conversationId: string, messageId: string, delta: string) => void;
+  appendThinkingToMessage: (conversationId: string, messageId: string, delta: string) => void;
 
   // Streaming state
   setStreaming: (isStreaming: boolean, messageId?: string | null) => void;
@@ -75,16 +79,23 @@ export const useChatStore = create<ChatState>()(
         return id;
       },
 
-      setActiveConversation: (id: string) => set({ activeConversationId: id }),
+      setActiveConversation: (id: string | null) => set({ activeConversationId: id }),
 
-      deleteConversation: (id: string) =>
+      deleteConversation: (id: string, fallbackFilter?: { agentMode: AgentMode; workDir?: string | null }) =>
         set((state) => {
           const filtered = state.conversations.filter((c) => c.id !== id);
+          const fallbackConversations = fallbackFilter
+            ? filtered.filter((conversation) =>
+                fallbackFilter.agentMode === 'code'
+                  ? conversation.workDir === fallbackFilter.workDir
+                  : !conversation.workDir,
+              )
+            : filtered;
           return {
             conversations: filtered,
             activeConversationId:
               state.activeConversationId === id
-                ? filtered[0]?.id ?? null
+                ? fallbackConversations[0]?.id ?? filtered[0]?.id ?? null
                 : state.activeConversationId,
           };
         }),
@@ -181,6 +192,23 @@ export const useChatStore = create<ChatState>()(
             ),
           };
         }),
+
+      appendThinkingToMessage: (conversationId: string, messageId: string, delta: string) =>
+        set((state) => ({
+          conversations: state.conversations.map((c) =>
+            c.id === conversationId
+              ? {
+                  ...c,
+                  messages: c.messages.map((m) =>
+                    m.id === messageId
+                      ? { ...m, thinkingContent: `${m.thinkingContent ?? ''}${delta}` }
+                      : m,
+                  ),
+                  updatedAt: Date.now(),
+                }
+              : c,
+          ),
+        })),
 
       setStreaming: (isStreaming: boolean, messageId: string | null = null) =>
         set({ isStreaming, streamingMessageId: messageId }),

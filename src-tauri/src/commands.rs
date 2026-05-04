@@ -71,9 +71,12 @@ pub async fn send_message(
     let conv_id = conversation_id.clone();
     let msg_id = message_id.clone();
     let app_clone = app.clone();
+    let app_thinking = app.clone();
     let app_err = app.clone();
     let conv_id_err = conversation_id.clone();
     let msg_id_err = message_id.clone();
+    let conv_id_thinking = conversation_id.clone();
+    let msg_id_thinking = message_id.clone();
 
     let result = client
         .stream_chat(
@@ -84,6 +87,16 @@ pub async fn send_message(
                     StreamDeltaEvent {
                         conversation_id: conv_id.clone(),
                         message_id: msg_id.clone(),
+                        delta,
+                    },
+                );
+            },
+            move |delta| {
+                let _ = app_thinking.emit(
+                    "thinking-delta",
+                    StreamThinkingEvent {
+                        conversation_id: conv_id_thinking.clone(),
+                        message_id: msg_id_thinking.clone(),
                         delta,
                     },
                 );
@@ -341,7 +354,9 @@ fn default_provider_settings(id: &str) -> ProviderSettings {
 }
 
 fn normalize_settings(settings: &mut PersistedSettings) {
-    if settings.active_provider_id.trim().is_empty() {
+    if settings.active_provider_id.trim().is_empty()
+        || !built_in_provider_ids().contains(&settings.active_provider_id.as_str())
+    {
         settings.active_provider_id = "anthropic".to_string();
     }
     for id in built_in_provider_ids() {

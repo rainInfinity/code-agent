@@ -44,7 +44,7 @@ const StatusDot = styled(FaCircle)`
 
 export const StatusBar: React.FC = () => {
   const providerName = useSettingsStore((s) => s.activeProviderDefinition.name);
-  const model = useSettingsStore((s) => s.activeProviderSettings.model);
+  const model = useSettingsStore((s) => s.providers[s.activeProviderId]?.model ?? '');
   const isConfigured = useSettingsStore((s) => s.isConfigured());
   const isStreaming = useChatStore((s) => s.isStreaming);
 

@@ -107,7 +107,6 @@ export const zhCN = {
     providerOptions: {
       anthropic: 'Anthropic',
       deepseek: 'DeepSeek',
-      openai: 'OpenAI',
     },
     apiKey: 'API Key',
     apiKeyConfigured: 'API Key 已配置',

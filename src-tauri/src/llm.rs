@@ -42,22 +42,6 @@ impl LlmClient {
     /// List models available to the configured provider/API key.
     pub async fn list_models(&self) -> Result<Vec<ModelInfo>, String> {
         let provider = provider_from_id(&self.provider_id)?;
-        if self.provider_id == "deepseek" {
-            return Ok(vec![
-                ModelInfo {
-                    id: "deepseek-chat".to_string(),
-                    display_name: "DeepSeek Chat".to_string(),
-                    created_at: String::new(),
-                    model_type: "deepseek".to_string(),
-                },
-                ModelInfo {
-                    id: "deepseek-reasoner".to_string(),
-                    display_name: "DeepSeek Reasoner".to_string(),
-                    created_at: String::new(),
-                    model_type: "deepseek".to_string(),
-                },
-            ]);
-        }
         let url = format!(
             "{}{}",
             self.api_endpoint.trim_end_matches('/'),
@@ -94,6 +78,7 @@ impl LlmClient {
         &self,
         messages: Vec<ChatMessage>,
         mut on_delta: impl FnMut(String),
+        mut on_thinking_delta: impl FnMut(String),
         mut on_error: impl FnMut(String),
     ) -> Result<String, String> {
         let provider = provider_from_id(&self.provider_id)?;
@@ -149,6 +134,9 @@ impl LlmClient {
                                 full_content.push_str(&delta);
                                 on_delta(delta);
                             }
+                            Ok(Some(ParseResult::ThinkingDelta(delta))) => {
+                                on_thinking_delta(delta);
+                            }
                             Ok(Some(_)) => {}
                             Ok(None) => {
                                 if data.trim() == "[DONE]" {
@@ -174,6 +162,7 @@ impl LlmClient {
         tools: Vec<ToolDefinition>,
         cancel_token: CancellationToken,
         mut on_text_delta: impl FnMut(String),
+        mut on_thinking_delta: impl FnMut(String),
         mut on_tool_call: impl FnMut(ToolCall),
         mut on_error: impl FnMut(String),
     ) -> Result<String, String> {
@@ -184,7 +173,7 @@ impl LlmClient {
             provider.chat_path()
         );
         let mut request_body = provider.build_chat_request(&self.model, &messages);
-        if self.provider_id == "anthropic" && !tools.is_empty() {
+        if matches!(self.provider_id.as_str(), "anthropic" | "deepseek") && !tools.is_empty() {
             if let Some(object) = request_body.as_object_mut() {
                 object.insert(
                     "tools".to_string(),
@@ -248,6 +237,9 @@ impl LlmClient {
                             Ok(Some(ParseResult::TextDelta(delta))) => {
                                 full_content.push_str(&delta);
                                 on_text_delta(delta);
+                            }
+                            Ok(Some(ParseResult::ThinkingDelta(delta))) => {
+                                on_thinking_delta(delta);
                             }
                             Ok(Some(ParseResult::ToolUseStart { index, id, name })) => {
                                 pending_tools.insert(

@@ -27,7 +27,10 @@ impl LlmProvider for AnthropicProvider {
                 let content = message
                     .content_blocks
                     .as_ref()
-                    .map(|blocks| serde_json::to_value(blocks).unwrap_or_else(|_| serde_json::json!(message.content)))
+                    .map(|blocks| {
+                        serde_json::to_value(blocks)
+                            .unwrap_or_else(|_| serde_json::json!(message.content))
+                    })
                     .unwrap_or_else(|| serde_json::json!(message.content));
                 serde_json::json!({
                     "role": message.role,
@@ -52,15 +55,16 @@ impl LlmProvider for AnthropicProvider {
             StreamEvent::ContentBlockDelta { delta, .. } if delta.delta_type == "text_delta" => {
                 Ok(Some(ParseResult::TextDelta(delta.text)))
             }
+            StreamEvent::ContentBlockDelta { delta, .. }
+                if delta.delta_type == "thinking_delta" =>
+            {
+                Ok(Some(ParseResult::ThinkingDelta(delta.thinking)))
+            }
             StreamEvent::ContentBlockStart {
                 index,
                 content_block,
             } => {
-                if content_block
-                    .get("type")
-                    .and_then(|value| value.as_str())
-                    == Some("tool_use")
-                {
+                if content_block.get("type").and_then(|value| value.as_str()) == Some("tool_use") {
                     let id = content_block
                         .get("id")
                         .and_then(|value| value.as_str())

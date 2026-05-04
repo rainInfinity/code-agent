@@ -2,7 +2,7 @@ use crate::agent::config::AgentConfig;
 use crate::llm::LlmClient;
 use crate::models::{
     AgentCompleteEvent, AgentStatus, AgentTurnEvent, ChatMessage, ContentBlock, StreamDeltaEvent,
-    ToolCallEvent, ToolResult, ToolResultEvent,
+    StreamThinkingEvent, ToolCallEvent, ToolResult, ToolResultEvent,
 };
 use crate::tools::ToolRegistry;
 use std::sync::Arc;
@@ -12,6 +12,7 @@ use tokio_util::sync::CancellationToken;
 
 pub trait AgentEventEmitter: Send + Sync {
     fn emit_text_delta(&self, payload: StreamDeltaEvent);
+    fn emit_thinking_delta(&self, payload: StreamThinkingEvent);
     fn emit_tool_call(&self, payload: ToolCallEvent);
     fn emit_tool_result(&self, payload: ToolResultEvent);
     fn emit_turn(&self, payload: AgentTurnEvent);
@@ -31,6 +32,10 @@ impl TauriAgentEventEmitter {
 impl AgentEventEmitter for TauriAgentEventEmitter {
     fn emit_text_delta(&self, payload: StreamDeltaEvent) {
         let _ = self.app.emit("stream-delta", payload);
+    }
+
+    fn emit_thinking_delta(&self, payload: StreamThinkingEvent) {
+        let _ = self.app.emit("thinking-delta", payload);
     }
 
     fn emit_tool_call(&self, payload: ToolCallEvent) {

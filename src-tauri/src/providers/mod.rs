@@ -11,9 +11,19 @@ use crate::models::{ChatMessage, ModelInfo};
 #[derive(Debug, Clone)]
 pub enum ParseResult {
     TextDelta(String),
-    ToolUseStart { index: usize, id: String, name: String },
-    ToolUseDelta { index: usize, input_json_delta: String },
-    ToolUseComplete { index: usize },
+    ThinkingDelta(String),
+    ToolUseStart {
+        index: usize,
+        id: String,
+        name: String,
+    },
+    ToolUseDelta {
+        index: usize,
+        input_json_delta: String,
+    },
+    ToolUseComplete {
+        index: usize,
+    },
 }
 
 pub trait LlmProvider: Send + Sync {
@@ -37,8 +47,7 @@ pub fn provider_from_id(id: &str) -> Result<Box<dyn LlmProvider>, String> {
 
 pub fn default_endpoint(id: &str) -> &'static str {
     match id {
-        "deepseek" => "https://api.deepseek.com",
-        "openai" => "https://api.openai.com",
+        "deepseek" => "https://api.deepseek.com/anthropic",
         _ => "https://api.anthropic.com",
     }
 }
@@ -46,11 +55,10 @@ pub fn default_endpoint(id: &str) -> &'static str {
 pub fn default_model(id: &str) -> &'static str {
     match id {
         "deepseek" => "deepseek-chat",
-        "openai" => "gpt-4.1-mini",
         _ => "claude-haiku-4-5-20251001",
     }
 }
 
-pub fn built_in_provider_ids() -> [&'static str; 3] {
-    ["anthropic", "deepseek", "openai"]
+pub fn built_in_provider_ids() -> [&'static str; 2] {
+    ["anthropic", "deepseek"]
 }

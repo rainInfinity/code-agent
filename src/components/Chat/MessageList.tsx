@@ -230,6 +230,45 @@ const ToolBody = styled.pre`
   font-size: ${({ theme }) => theme.typography.fontSize.sm};
 `;
 
+const ThinkingPanelShell = styled.details`
+  margin: ${({ theme }) => theme.spacing.sm} 0;
+  border: 1px solid ${({ theme }) => theme.colors.border};
+  border-radius: ${({ theme }) => theme.borderRadius.md};
+  background-color: ${({ theme }) => theme.colors.bgSecondary};
+  text-align: left;
+
+  summary {
+    display: flex;
+    align-items: center;
+    gap: ${({ theme }) => theme.spacing.xs};
+    cursor: pointer;
+    padding: ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.md};
+    color: ${({ theme }) => theme.colors.textSecondary};
+    font-size: ${({ theme }) => theme.typography.fontSize.sm};
+    font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
+  }
+`;
+
+const ThinkingPulse = styled.span`
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: ${({ theme }) => theme.colors.accentPrimary};
+  animation: ${pulse} 1.4s infinite ease-in-out;
+`;
+
+const ThinkingBody = styled.pre`
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
+  padding: ${({ theme }) => theme.spacing.md};
+  border-top: 1px solid ${({ theme }) => theme.colors.border};
+  color: ${({ theme }) => theme.colors.textPrimary};
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
+`;
+
 const ToolIndicator = styled.div`
   display: inline-flex;
   align-items: center;
@@ -254,7 +293,7 @@ const makeStreamingMarkdownRenderable = (content: string) => {
 };
 
 const MessageBodyContent: React.FC<{ message: Message }> = ({ message }) => {
-  const { status, content, toolCalls, toolResults } = message;
+  const { status, content, thinkingContent, toolCalls, toolResults } = message;
 
   if (status === "error") {
     return <ErrorMessage>{content || appMessages.messages.errorFallback}</ErrorMessage>;
@@ -272,6 +311,15 @@ const MessageBodyContent: React.FC<{ message: Message }> = ({ message }) => {
 
   return (
     <>
+      {thinkingContent ? (
+        <ThinkingPanelShell open>
+          <summary>
+            {status === "streaming" && <ThinkingPulse aria-hidden="true" />}
+            Thinking
+          </summary>
+          <ThinkingBody>{thinkingContent}</ThinkingBody>
+        </ThinkingPanelShell>
+      ) : null}
       {content ? (
         <MarkdownRenderer
           content={status === "streaming" ? makeStreamingMarkdownRenderable(content) : content}
@@ -292,7 +340,11 @@ const MessageBodyContent: React.FC<{ message: Message }> = ({ message }) => {
   );
 };
 
-export const MessageList: React.FC = () => {
+interface MessageListProps {
+  conversationId?: string;
+}
+
+export const MessageList: React.FC<MessageListProps> = ({ conversationId }) => {
   const listRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const autoFollowRef = useRef(true);
@@ -304,7 +356,7 @@ export const MessageList: React.FC = () => {
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const { conversations, activeConversationId } = useChatStore();
 
-  const conversation = conversations.find((c) => c.id === activeConversationId);
+  const conversation = conversations.find((c) => c.id === (conversationId ?? activeConversationId));
   const messages = conversation?.messages ?? [];
   const isStreaming = messages.some((message) => message.status === "streaming");
   const lastMessage = messages[messages.length - 1];

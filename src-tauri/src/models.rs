@@ -256,6 +256,8 @@ pub struct ContentDelta {
     #[serde(default)]
     pub text: String,
     #[serde(default)]
+    pub thinking: String,
+    #[serde(default)]
     pub input_json_delta: String,
     #[serde(default)]
     pub tool_use: Option<ToolUseInfo>,
@@ -280,6 +282,14 @@ pub struct ApiError {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamDeltaEvent {
+    pub conversation_id: String,
+    pub message_id: String,
+    pub delta: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StreamThinkingEvent {
     pub conversation_id: String,
     pub message_id: String,
     pub delta: String,
@@ -365,5 +375,6 @@ pub struct ToolResult {
 pub struct ToolDefinition {
     pub name: String,
     pub description: String,
+    #[serde(rename = "input_schema")]
     pub parameters: serde_json::Value,
 }

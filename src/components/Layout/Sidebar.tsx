@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import styled from 'styled-components';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
@@ -129,7 +129,7 @@ const ConversationList = styled.div`
   padding: ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.sm};
 `;
 
-const ConversationItem = styled(Row).attrs({ as: 'button' })<{ $active: boolean }>`
+const ConversationItem = styled(Row).attrs({ as: 'div' })<{ $active: boolean }>`
   width: 100%;
   padding: ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.md};
   border-radius: ${({ theme }) => theme.borderRadius.md};
@@ -139,6 +139,7 @@ const ConversationItem = styled(Row).attrs({ as: 'button' })<{ $active: boolean 
   background-color: ${({ theme, $active }) =>
     $active ? theme.colors.sidebarActive : 'transparent'};
   text-align: left;
+  cursor: pointer;
   transition: background-color ${({ theme }) => theme.transitions.fast},
     color ${({ theme }) => theme.transitions.fast};
   position: relative;
@@ -300,11 +301,74 @@ const NoWorkDirHint = styled.div`
   line-height: 1.5;
 `;
 
+const ConfirmOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: ${({ theme }) => theme.colors.overlay};
+`;
+
+const ConfirmDialog = styled.div`
+  width: min(360px, calc(100vw - 32px));
+  padding: ${({ theme }) => theme.spacing.lg};
+  border: 1px solid ${({ theme }) => theme.colors.border};
+  border-radius: ${({ theme }) => theme.borderRadius.lg};
+  background-color: ${({ theme }) => theme.colors.bgElevated};
+  box-shadow: ${({ theme }) => theme.shadows.xl};
+`;
+
+const ConfirmTitle = styled.h3`
+  margin: 0 0 ${({ theme }) => theme.spacing.sm};
+  color: ${({ theme }) => theme.colors.textPrimary};
+  font-size: ${({ theme }) => theme.typography.fontSize.lg};
+  font-weight: ${({ theme }) => theme.typography.fontWeight.semibold};
+`;
+
+const ConfirmMessage = styled.p`
+  margin: 0;
+  color: ${({ theme }) => theme.colors.textSecondary};
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
+  line-height: ${({ theme }) => theme.typography.lineHeight.relaxed};
+`;
+
+const ConfirmActions = styled(Row)`
+  margin-top: ${({ theme }) => theme.spacing.lg};
+`;
+
+const ConfirmButton = styled.button<{ $danger?: boolean }>`
+  min-width: 72px;
+  height: 34px;
+  padding: 0 ${({ theme }) => theme.spacing.md};
+  border-radius: ${({ theme }) => theme.borderRadius.md};
+  border: 1px solid
+    ${({ theme, $danger }) => ($danger ? theme.colors.error : theme.colors.border)};
+  background-color: ${({ theme, $danger }) =>
+    $danger ? theme.colors.error : theme.colors.bgSecondary};
+  color: ${({ theme, $danger }) => ($danger ? '#fff' : theme.colors.textSecondary)};
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
+  font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
+
+  &:hover {
+    background-color: ${({ theme, $danger }) =>
+      $danger ? theme.colors.error : theme.colors.bgHover};
+    color: ${({ theme, $danger }) => ($danger ? '#fff' : theme.colors.textPrimary)};
+  }
+
+  &:focus-visible {
+    outline: 2px solid ${({ theme }) => theme.colors.inputBorderFocus};
+    outline-offset: 2px;
+  }
+`;
+
 interface SidebarProps {
   onOpenSettings: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings }) => {
+  const [pendingDeleteConversationId, setPendingDeleteConversationId] = useState<string | null>(null);
   const {
     conversations,
     activeConversationId,
@@ -333,11 +397,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings }) => {
     : null;
 
   const filteredConversations = useMemo(() => {
-    if (agentMode === 'code' && effectiveWorkDir) {
-      return conversations.filter((c) => c.workDir === effectiveWorkDir);
+    if (agentMode === 'code') {
+      return effectiveWorkDir
+        ? conversations.filter((c) => c.workDir === effectiveWorkDir)
+        : [];
     }
-    return conversations;
+    return conversations.filter((c) => !c.workDir);
   }, [conversations, agentMode, effectiveWorkDir]);
+
+  useEffect(() => {
+    const activeInCurrentView = filteredConversations.some((c) => c.id === activeConversationId);
+    if (activeInCurrentView) return;
+
+    setActiveConversation(filteredConversations[0]?.id ?? null);
+  }, [activeConversationId, filteredConversations, setActiveConversation]);
 
   const handleModeSwitch = async (nextMode: AgentMode) => {
     if (nextMode === agentMode) return;
@@ -368,11 +441,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings }) => {
     const dirConvs = conversations.filter((c) => c.workDir === selected);
     const activeInDir = dirConvs.some((c) => c.id === activeConversationId);
     if (!activeInDir) {
-      setActiveConversation(dirConvs[0]?.id ?? '');
+      setActiveConversation(dirConvs[0]?.id ?? null);
     }
   };
 
   const handleCreateConversation = () => {
+    const activeConversation = filteredConversations.find((c) => c.id === activeConversationId);
+    if (activeConversation && activeConversation.messages.length === 0) {
+      return;
+    }
+
     if (agentMode === 'code') {
       if (!effectiveWorkDir) return;
       createConversation(effectiveWorkDir);
@@ -386,8 +464,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings }) => {
     const dirConvs = conversations.filter((c) => c.workDir === path);
     const activeInDir = dirConvs.some((c) => c.id === activeConversationId);
     if (!activeInDir) {
-      setActiveConversation(dirConvs[0]?.id ?? '');
+      setActiveConversation(dirConvs[0]?.id ?? null);
     }
+  };
+
+  const performDeleteConversation = (conversationId: string) => {
+    deleteConversation(conversationId, { agentMode, workDir: effectiveWorkDir });
+    setPendingDeleteConversationId(null);
+  };
+
+  const handleDeleteConversation = (conversationId: string) => {
+    const conversation = conversations.find((c) => c.id === conversationId);
+    const isBlankConversation = (conversation?.messages.length ?? 0) === 0;
+    if (isBlankConversation) {
+      performDeleteConversation(conversationId);
+      return;
+    }
+
+    setPendingDeleteConversationId(conversationId);
   };
 
   const collapsedTabIndex = sidebarCollapsed ? -1 : 0;
@@ -492,6 +586,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings }) => {
                 $align="center"
                 $gap="sm"
                 onClick={() => setActiveConversation(conv.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setActiveConversation(conv.id);
+                  }
+                }}
+                role="button"
                 tabIndex={collapsedTabIndex}
               >
                 <FaComments size={12} />
@@ -499,7 +600,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings }) => {
                 <DeleteButton
                   onClick={(e) => {
                     e.stopPropagation();
-                    deleteConversation(conv.id);
+                    handleDeleteConversation(conv.id);
                   }}
                   title={messages.sidebar.deleteConversation}
                   aria-label={messages.sidebar.deleteConversation}
@@ -519,6 +620,34 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings }) => {
           </SidebarFooter>
         </SidebarContent>
       </SidebarContainer>
+      {pendingDeleteConversationId && (
+        <ConfirmOverlay
+          role="presentation"
+          onClick={() => setPendingDeleteConversationId(null)}
+        >
+          <ConfirmDialog
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-conversation-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <ConfirmTitle id="delete-conversation-title">删除会话</ConfirmTitle>
+            <ConfirmMessage>确定要删除这条会话吗？此操作无法撤销。</ConfirmMessage>
+            <ConfirmActions $justify="flex-end" $gap="sm">
+              <ConfirmButton type="button" onClick={() => setPendingDeleteConversationId(null)}>
+                取消
+              </ConfirmButton>
+              <ConfirmButton
+                type="button"
+                $danger
+                onClick={() => performDeleteConversation(pendingDeleteConversationId)}
+              >
+                删除
+              </ConfirmButton>
+            </ConfirmActions>
+          </ConfirmDialog>
+        </ConfirmOverlay>
+      )}
     </>
   );
 };

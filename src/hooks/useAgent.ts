@@ -5,6 +5,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import {
   onAgentComplete,
   onAgentTurn,
+  onThinkingDelta,
   onStreamDelta,
   onStreamEnd,
   onStreamError,
@@ -45,6 +46,11 @@ function ensureAgentListeners() {
     const unlisteners = await Promise.all([
       onStreamDelta((event) => {
         useChatStore.getState().appendToMessage(event.conversationId, event.messageId, event.delta);
+      }),
+      onThinkingDelta((event) => {
+        useChatStore
+          .getState()
+          .appendThinkingToMessage(event.conversationId, event.messageId, event.delta);
       }),
       onStreamEnd((event) => {
         const { updateMessage, setStreaming } = useChatStore.getState();
@@ -139,6 +145,7 @@ if (import.meta.hot) {
 export function useAgent() {
   const {
     activeConversationId,
+    conversations,
     isStreaming,
     selectedWorkDir,
     addMessage,
@@ -150,6 +157,7 @@ export function useAgent() {
   const isConfigured = useSettingsStore((state) => state.isConfigured());
   const activeProviderId = useSettingsStore((state) => state.activeProviderId);
   const agentMode = useSettingsStore((state) => state.agentMode);
+  const workingDirectories = useSettingsStore((state) => state.workingDirectories);
   const currentSessionId = useAgentStore((state) => state.currentSessionId);
   const setRunning = useAgentStore((state) => state.setRunning);
   const resetAgent = useAgentStore((state) => state.reset);
@@ -162,9 +170,25 @@ export function useAgent() {
     async (content: string) => {
       if (!content.trim() || isStreaming) return;
 
-      let convId = activeConversationId;
+      const effectiveWorkDir =
+        agentMode === 'code'
+          ? (selectedWorkDir && workingDirectories.some((dir) => dir.path === selectedWorkDir)
+              ? selectedWorkDir
+              : workingDirectories[0]?.path ?? null)
+          : null;
+      const visibleConversations =
+        agentMode === 'code'
+          ? (effectiveWorkDir
+              ? conversations.filter((conversation) => conversation.workDir === effectiveWorkDir)
+              : [])
+          : conversations.filter((conversation) => !conversation.workDir);
+      let convId = visibleConversations.some((conversation) => conversation.id === activeConversationId)
+        ? activeConversationId
+        : null;
+
       if (!convId) {
-        const workDir = agentMode === 'code' ? (selectedWorkDir ?? undefined) : undefined;
+        if (agentMode === 'code' && !effectiveWorkDir) return;
+        const workDir = agentMode === 'code' ? effectiveWorkDir ?? undefined : undefined;
         convId = createConversation(workDir);
       }
 
@@ -216,7 +240,9 @@ export function useAgent() {
       activeConversationId,
       activeProviderId,
       agentMode,
+      conversations,
       selectedWorkDir,
+      workingDirectories,
       isStreaming,
       addMessage,
       createConversation,

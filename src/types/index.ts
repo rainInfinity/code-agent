@@ -28,6 +28,7 @@ export interface Message {
   contentBlocks?: ContentBlock[];
   status: MessageStatus;
   timestamp: number;
+  thinkingContent?: string;
   toolCalls?: ToolCall[];
   toolResults?: ToolResult[];
 }
@@ -64,7 +65,7 @@ export interface ToolResult {
 }
 
 /** Application settings */
-export type ProviderId = 'anthropic' | 'deepseek' | 'openai';
+export type ProviderId = 'anthropic' | 'deepseek';
 
 export interface ProviderDefinition {
   id: ProviderId;
@@ -76,7 +77,7 @@ export interface ProviderDefinition {
   authHeaderName: string;
   authHeaderValuePrefix: string;
   apiKeyPrefix: string;
-  apiKeyHelpKey: 'anthropic' | 'deepseek' | 'openai';
+  apiKeyHelpKey: 'anthropic' | 'deepseek';
   extraHeaders?: Record<string, string>;
 }
 
@@ -107,6 +108,13 @@ export interface ChatState {
 
 /** LLM stream event payload from Rust backend */
 export interface StreamEvent {
+  conversationId: string;
+  delta: string;
+  messageId: string;
+}
+
+/** Thinking stream event payload */
+export interface StreamThinkingEvent {
   conversationId: string;
   delta: string;
   messageId: string;

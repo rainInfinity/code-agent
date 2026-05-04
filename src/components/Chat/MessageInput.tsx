@@ -222,6 +222,7 @@ interface MessageInputProps {
   onStop: () => void;
   isStreaming: boolean;
   disabled?: boolean;
+  model?: string;
 }
 
 export const MessageInput: React.FC<MessageInputProps> = ({
@@ -229,6 +230,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   onStop,
   isStreaming,
   disabled = false,
+  model,
 }) => {
   const [value, setValue] = useState('');
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
@@ -399,7 +401,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
         </ComposerToolbar>
       </InputWrapper>
       <Hint>
-        {messages.composer.hint}
+        {model ? `${model} · Enter 发送，Shift+Enter 换行` : messages.composer.hint}
       </Hint>
     </InputContainer>
   );
