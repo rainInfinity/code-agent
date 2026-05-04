@@ -2,7 +2,7 @@
 // IPC Layer — Type-safe wrappers around Tauri invoke / listen
 // ============================================================
 import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   ProviderId,
   ProviderSettingsMap,
@@ -12,6 +12,8 @@ import type {
   StreamErrorEvent,
   ToolCallEvent,
   ToolResultEvent,
+  TracePromptEvent,
+  TraceThinkingEvent,
   AgentTurnEvent,
   AgentCompleteEvent,
 } from '@/types';
@@ -22,6 +24,8 @@ export interface SendMessagePayload {
   providerId: ProviderId;
   conversationId: string;
   assistantMessageId: string;
+  agentType?: 'chat' | 'code';
+  workDir?: string | null;
   messages: Array<{
     role: string;
     content: string;
@@ -48,6 +52,22 @@ export async function runAgent(payload: RunAgentPayload): Promise<string> {
 
 export async function stopAgent(sessionId: string): Promise<void> {
   return invoke('stop_agent', { sessionId });
+}
+
+export async function openTraceWindow(): Promise<void> {
+  return invoke('open_trace_window');
+}
+
+export async function closeTraceWindow(): Promise<void> {
+  return invoke('close_trace_window');
+}
+
+export async function hideTraceWindow(): Promise<void> {
+  return invoke('hide_trace_window');
+}
+
+export async function isTraceWindowOpen(): Promise<boolean> {
+  return invoke('is_trace_window_open');
 }
 
 /** Save settings to the Rust backend */
@@ -120,6 +140,46 @@ export async function onToolCall(callback: (event: ToolCallEvent) => void): Prom
 
 export async function onToolResult(callback: (event: ToolResultEvent) => void): Promise<UnlistenFn> {
   return listen<ToolResultEvent>('tool-result', (e) => callback(e.payload));
+}
+
+export async function onTracePrompt(callback: (event: TracePromptEvent) => void): Promise<UnlistenFn> {
+  return listen<TracePromptEvent>('trace-prompt', (e) => callback(e.payload));
+}
+
+export async function onTraceThinkingStart(
+  callback: (event: TraceThinkingEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<TraceThinkingEvent>('trace-thinking-start', (e) => callback(e.payload));
+}
+
+export async function onTraceThinkingEnd(
+  callback: (event: TraceThinkingEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<TraceThinkingEvent>('trace-thinking-end', (e) => callback(e.payload));
+}
+
+export async function onTraceWindowClosed(callback: () => void): Promise<UnlistenFn> {
+  return listen('trace-window-closed', () => callback());
+}
+
+export async function emitTraceConversationChanged(conversationId: string): Promise<void> {
+  return emit('trace-conversation-changed', { conversationId });
+}
+
+export async function onTraceConversationChanged(
+  callback: (event: { conversationId: string }) => void,
+): Promise<UnlistenFn> {
+  return listen<{ conversationId: string }>('trace-conversation-changed', (e) => callback(e.payload));
+}
+
+export async function emitThemeChanged(theme: 'dark' | 'light'): Promise<void> {
+  return emit('theme-changed', { theme });
+}
+
+export async function onThemeChanged(
+  callback: (event: { theme: 'dark' | 'light' }) => void,
+): Promise<UnlistenFn> {
+  return listen<{ theme: 'dark' | 'light' }>('theme-changed', (e) => callback(e.payload));
 }
 
 export async function onAgentTurn(callback: (event: AgentTurnEvent) => void): Promise<UnlistenFn> {

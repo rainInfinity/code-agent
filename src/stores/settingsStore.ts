@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { PROVIDER_IDS, createDefaultProviders, getProvider } from '@/config/providers';
+import { emitThemeChanged } from '@/hooks/useIpc';
 import type {
   AgentMode,
   ProviderApiKeyConfiguredMap,
@@ -96,9 +97,16 @@ export const useSettingsStore = create<SettingsState>()(
         get().setProviderSettings(get().activeProviderId, { apiEndpoint }),
       setModel: (model: string) =>
         get().setProviderSettings(get().activeProviderId, { model }),
-      setTheme: (theme: 'dark' | 'light') => set({ theme }),
+      setTheme: (theme: 'dark' | 'light') => {
+        set({ theme });
+        emitThemeChanged(theme).catch(() => {});
+      },
       toggleTheme: () =>
-        set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
+        set((state) => {
+          const theme = state.theme === 'dark' ? 'light' : 'dark';
+          emitThemeChanged(theme).catch(() => {});
+          return { theme };
+        }),
       setSidebarCollapsed: (sidebarCollapsed: boolean) =>
         set({ sidebarCollapsed }),
       toggleSidebar: () =>

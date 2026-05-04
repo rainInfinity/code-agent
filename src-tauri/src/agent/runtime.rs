@@ -2,8 +2,10 @@ use crate::agent::session::AgentSession;
 use crate::llm::ToolCall;
 use crate::models::{
     AgentCompleteEvent, AgentStatus, AgentTurnEvent, ContentBlock, StreamDeltaEvent,
-    StreamThinkingEvent, ToolCallEvent, ToolResult, ToolResultEvent,
+    StreamThinkingEvent, ToolCallEvent, ToolResult, ToolResultEvent, TracePromptEvent,
+    TraceThinkingEvent,
 };
+use crate::prompt::{collect_session_context, PromptEngine};
 use crate::tools::executor::ToolExecutor;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -56,6 +58,7 @@ pub async fn agent_loop(session: &mut AgentSession) -> Result<AgentStatus, Strin
         session.config.tool_timeout_secs,
         session.config.tool_output_max_chars,
     );
+    let prompt_engine = PromptEngine::new();
 
     while session.turn_count < session.config.max_turns {
         if session.cancel_token.is_cancelled() {
@@ -73,14 +76,39 @@ pub async fn agent_loop(session: &mut AgentSession) -> Result<AgentStatus, Strin
         let conversation_id = session.conversation_id.clone();
         let message_id = session.assistant_message_id.clone();
         let emitter = session.emitter.clone();
-        let tools = session.tool_registry.definitions();
+        let tools = if session.agent_type == "chat" {
+            Vec::new()
+        } else {
+            session.tool_registry.definitions()
+        };
+        let session_context = collect_session_context(session.work_dir.as_deref());
+        let prompt = prompt_engine.build(
+            &session.agent_type,
+            &session.messages,
+            &tools,
+            &session_context,
+        );
+        emitter.emit_trace_prompt(TracePromptEvent {
+            conversation_id: session.conversation_id.clone(),
+            session_id: session.id.clone(),
+            turn: session.turn_count,
+            system_prompt: prompt.system_prompt.clone(),
+            messages: prompt.messages.clone(),
+            tools: prompt.tools.clone(),
+        });
+        emitter.emit_trace_thinking_start(TraceThinkingEvent {
+            conversation_id: session.conversation_id.clone(),
+            session_id: session.id.clone(),
+            turn: session.turn_count,
+        });
         let cancel_token = session.cancel_token.clone();
 
         let full_content = match session
             .llm_client
             .stream_chat_with_tools(
-                session.messages.clone(),
-                tools,
+                Some(prompt.system_prompt),
+                prompt.messages,
+                prompt.tools,
                 cancel_token,
                 {
                     let conversation_id = conversation_id.clone();
@@ -132,8 +160,22 @@ pub async fn agent_loop(session: &mut AgentSession) -> Result<AgentStatus, Strin
             )
             .await
         {
-            Ok(full_content) => full_content,
-            Err(error) => return complete(session, AgentStatus::Error, &error).await,
+            Ok(full_content) => {
+                emitter.emit_trace_thinking_end(TraceThinkingEvent {
+                    conversation_id: session.conversation_id.clone(),
+                    session_id: session.id.clone(),
+                    turn: session.turn_count,
+                });
+                full_content
+            }
+            Err(error) => {
+                emitter.emit_trace_thinking_end(TraceThinkingEvent {
+                    conversation_id: session.conversation_id.clone(),
+                    session_id: session.id.clone(),
+                    turn: session.turn_count,
+                });
+                return complete(session, AgentStatus::Error, &error).await;
+            }
         };
 
         let tool_calls = tool_calls.lock().unwrap().clone();

@@ -29,6 +29,7 @@ export interface Message {
   status: MessageStatus;
   timestamp: number;
   thinkingContent?: string;
+  thinkingStartedAt?: number;
   toolCalls?: ToolCall[];
   toolResults?: ToolResult[];
 }
@@ -47,6 +48,7 @@ export interface Conversation {
   updatedAt: number;
   /** Working directory path — set when created in code mode */
   workDir?: string;
+  traceEnabled?: boolean;
 }
 
 /** Tool call request from the LLM */
@@ -151,6 +153,61 @@ export interface ToolResultEvent {
     output: string;
     error?: string;
   };
+}
+
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}
+
+export interface TracePromptEvent {
+  conversationId: string;
+  sessionId: string;
+  turn: number;
+  systemPrompt: string;
+  messages: Array<{
+    role: string;
+    content: string;
+    contentBlocks?: ContentBlock[];
+  }>;
+  tools: ToolDefinition[];
+}
+
+export interface TraceThinkingEvent {
+  conversationId: string;
+  sessionId: string;
+  turn: number;
+}
+
+export interface TurnTrace {
+  turnNumber: number;
+  sessionId: string;
+  conversationId: string;
+  startTime: number;
+  endTime?: number;
+  status: 'running' | 'complete' | 'error';
+  prompt?: {
+    systemPrompt: string;
+    messages: TracePromptEvent['messages'];
+    tools: ToolDefinition[];
+  };
+  thinking: {
+    content: string;
+    startTime?: number;
+    endTime?: number;
+    status: 'idle' | 'streaming' | 'complete';
+  };
+  response: {
+    content: string;
+    startTime?: number;
+    endTime?: number;
+  };
+}
+
+export interface ConversationTrace {
+  conversationId: string | null;
+  turns: TurnTrace[];
 }
 
 export interface AgentTurnEvent {

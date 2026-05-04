@@ -20,7 +20,12 @@ impl LlmProvider for AnthropicProvider {
         vec![("anthropic-version".to_string(), "2023-06-01".to_string())]
     }
 
-    fn build_chat_request(&self, model: &str, messages: &[ChatMessage]) -> serde_json::Value {
+    fn build_chat_request(
+        &self,
+        model: &str,
+        system: Option<String>,
+        messages: &[ChatMessage],
+    ) -> serde_json::Value {
         let messages = messages
             .iter()
             .map(|message| {
@@ -42,6 +47,7 @@ impl LlmProvider for AnthropicProvider {
         serde_json::json!(AnthropicRequest {
             model: model.to_string(),
             max_tokens: 4096,
+            system: system.filter(|value| !value.trim().is_empty()),
             messages,
             stream: true,
             tools: Vec::new(),
@@ -100,5 +106,24 @@ impl LlmProvider for AnthropicProvider {
         serde_json::from_str::<ModelsResponse>(body)
             .map(|response| response.data)
             .map_err(|e| format!("Failed to parse Anthropic models response: {}", e))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn includes_non_empty_system_prompt() {
+        let request = AnthropicProvider.build_chat_request("claude-test", Some("system".into()), &[]);
+
+        assert_eq!(request.get("system").and_then(|value| value.as_str()), Some("system"));
+    }
+
+    #[test]
+    fn omits_empty_system_prompt() {
+        let request = AnthropicProvider.build_chat_request("claude-test", Some("  ".into()), &[]);
+
+        assert!(request.get("system").is_none());
     }
 }

@@ -1,16 +1,21 @@
 use crate::agent::{AgentConfig, AgentRuntime, AgentSession, TauriAgentEventEmitter};
 use crate::llm::LlmClient;
 use crate::models::*;
+use crate::prompt::{collect_session_context, PromptEngine};
 use crate::providers::{built_in_provider_ids, default_endpoint, default_model};
 use crate::tools::ToolRegistry;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tokio_util::sync::CancellationToken;
 
 const SETTINGS_FILE: &str = "settings.json";
+const TRACE_WINDOW_LABEL: &str = "trace";
+const TRACE_WINDOW_WIDTH: f64 = 420.0;
+const TRACE_WINDOW_MIN_WIDTH: f64 = 320.0;
+const TRACE_WINDOW_MIN_HEIGHT: f64 = 400.0;
 
 /// Application state holding settings
 pub struct AppState {
@@ -18,6 +23,77 @@ pub struct AppState {
     pub provider_settings: Mutex<HashMap<String, ProviderSettings>>,
     pub agent_runtime: Arc<AgentRuntime>,
     pub tool_registry: Arc<ToolRegistry>,
+}
+
+#[tauri::command]
+pub async fn open_trace_window(app: AppHandle) -> Result<(), String> {
+    if let Some(trace) = app.get_webview_window(TRACE_WINDOW_LABEL) {
+        trace.show().map_err(|e| e.to_string())?;
+        trace.set_focus().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    let (trace_width, trace_height) = app
+        .get_webview_window("main")
+        .and_then(|main| main.outer_size().ok())
+        .map(|size| {
+            (
+                (size.width as f64 * 0.8).max(TRACE_WINDOW_MIN_WIDTH),
+                (size.height as f64 * 0.8).max(TRACE_WINDOW_MIN_HEIGHT),
+            )
+        })
+        .unwrap_or((TRACE_WINDOW_WIDTH, 600.0));
+
+    #[cfg(debug_assertions)]
+    let url = WebviewUrl::External(
+        "http://localhost:1420/trace.html".parse().unwrap(),
+    );
+    #[cfg(not(debug_assertions))]
+    let url = WebviewUrl::App("trace.html".into());
+
+    let trace = WebviewWindowBuilder::new(&app, TRACE_WINDOW_LABEL, url)
+    .title("Agent Trace")
+    .inner_size(trace_width, trace_height)
+    .min_inner_size(TRACE_WINDOW_MIN_WIDTH, TRACE_WINDOW_MIN_HEIGHT)
+    .resizable(true)
+    .decorations(false)
+    .center()
+    .visible(true)
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    let app_for_close = app.clone();
+    trace.on_window_event(move |event| {
+        if matches!(event, WindowEvent::CloseRequested { .. }) {
+            let _ = app_for_close.emit("trace-window-closed", ());
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn hide_trace_window(app: AppHandle) -> Result<(), String> {
+    if let Some(trace) = app.get_webview_window(TRACE_WINDOW_LABEL) {
+        trace.hide().map_err(|e| e.to_string())?;
+        let _ = app.emit("trace-window-closed", ());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn close_trace_window(app: AppHandle) -> Result<(), String> {
+    if let Some(trace) = app.get_webview_window(TRACE_WINDOW_LABEL) {
+        trace.close().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn is_trace_window_open(app: AppHandle) -> bool {
+    app.get_webview_window(TRACE_WINDOW_LABEL)
+        .and_then(|trace| trace.is_visible().ok())
+        .unwrap_or(false)
 }
 
 impl AppState {
@@ -67,6 +143,25 @@ pub async fn send_message(
 
     let conversation_id = payload.conversation_id.clone();
     let message_id = payload.assistant_message_id.clone();
+    let session_id = format!("chat-{}", message_id);
+    let agent_type = payload
+        .agent_type
+        .as_deref()
+        .filter(|value| *value == "chat" || *value == "code")
+        .unwrap_or("chat");
+    let session_context = collect_session_context(payload.work_dir.as_deref());
+    let prompt = PromptEngine::new().build(agent_type, &payload.messages, &[], &session_context);
+    let _ = app.emit(
+        "trace-prompt",
+        TracePromptEvent {
+            conversation_id: conversation_id.clone(),
+            session_id,
+            turn: 1,
+            system_prompt: prompt.system_prompt.clone(),
+            messages: prompt.messages.clone(),
+            tools: prompt.tools.clone(),
+        },
+    );
 
     let conv_id = conversation_id.clone();
     let msg_id = message_id.clone();
@@ -80,7 +175,8 @@ pub async fn send_message(
 
     let result = client
         .stream_chat(
-            payload.messages,
+            Some(prompt.system_prompt),
+            prompt.messages,
             move |delta| {
                 let _ = app_clone.emit(
                     "stream-delta",
@@ -180,6 +276,8 @@ pub async fn run_agent(
         payload.conversation_id,
         payload.assistant_message_id,
         payload.messages,
+        payload.agent_type.unwrap_or_else(|| "code".to_string()),
+        payload.work_dir,
         config,
         llm_client,
         state.tool_registry.clone(),

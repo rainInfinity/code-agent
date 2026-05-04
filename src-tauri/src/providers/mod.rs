@@ -31,7 +31,12 @@ pub trait LlmProvider: Send + Sync {
     fn models_path(&self) -> &str;
     fn auth_header(&self, api_key: &str) -> (String, String);
     fn extra_headers(&self) -> Vec<(String, String)>;
-    fn build_chat_request(&self, model: &str, messages: &[ChatMessage]) -> serde_json::Value;
+    fn build_chat_request(
+        &self,
+        model: &str,
+        system: Option<String>,
+        messages: &[ChatMessage],
+    ) -> serde_json::Value;
     fn parse_stream_data(&self, data: &str) -> Result<Option<ParseResult>, String>;
     fn parse_models_response(&self, body: &str) -> Result<Vec<ModelInfo>, String>;
 }

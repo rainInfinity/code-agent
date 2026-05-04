@@ -18,7 +18,21 @@
       "Bash(Get-ChildItem -Path . -Filter \".openspec.yaml\" -Recurse -Depth 3)",
       "Bash(Select-Object -ExpandProperty FullName)",
       "Bash(Get-ChildItem -Path \"f:/project/code-agent/openspec/changes/deepseek-anthropic-compat-and-ux-fixes\" -Recurse)",
-      "Bash(Select-Object Mode, Length, Name)"
+      "Bash(Select-Object Mode, Length, Name)",
+      "PowerShell(New-Item -ItemType Directory -Path \"F:\\\\project\\\\code-agent\\\\openspec\\\\specs\\\\agent-core-loop\" -Force)",
+      "PowerShell(New-Item -ItemType Directory -Path \"F:\\\\project\\\\code-agent\\\\openspec\\\\specs\\\\tool-use-streaming\" -Force)",
+      "PowerShell(New-Item -ItemType Directory -Path \"F:\\\\project\\\\code-agent\\\\openspec\\\\specs\\\\content-block-messages\" -Force)",
+      "PowerShell(New-Item -ItemType Directory -Path \"F:\\\\project\\\\code-agent\\\\openspec\\\\specs\\\\agent-frontend\" -Force)",
+      "PowerShell(Move-Item -Path \"openspec/changes/implement-agent-core-loop\" -Destination \"openspec/changes/archive/2026-05-04-implement-agent-core-loop\" -Force)",
+      "PowerShell(Move-Item -Path \"openspec/changes/deepseek-anthropic-compat-and-ux-fixes\" -Destination \"openspec/changes/archive/2026-05-04-deepseek-anthropic-compat-and-ux-fixes\" -Force)",
+      "PowerShell(Move-Item -Path \"openspec/changes/redesign-settings-and-sidebar-layout\" -Destination \"openspec/changes/archive/2026-05-04-redesign-settings-and-sidebar-layout\" -Force)",
+      "Bash(Get-ChildItem -Path \"f:\\\\project\\\\code-agent\\\\node_modules\\\\@tauri-apps\\\\api\" -Recurse -Filter \"*.d.ts\")",
+      "Bash(Select-String -Pattern \"getCurrentWebviewWindow\" -List)",
+      "Bash(Select-Object -First 5)",
+      "Bash(cargo check *)",
+      "WebSearch",
+      "WebFetch(domain:v2.tauri.app)",
+      "WebFetch(domain:github.com)"
     ],
     "additionalDirectories": [
       "F:\\project\\code-agent\\openspec\\changes\\multi-provider-api-config\\specs",

@@ -2,6 +2,7 @@ mod agent;
 mod commands;
 mod llm;
 mod models;
+mod prompt;
 mod providers;
 mod tools;
 
@@ -147,9 +148,16 @@ fn setup_window_state(app: &tauri::App) {
         }
         WindowEvent::CloseRequested { .. } => {
             save_window_state(&app_handle, &window_for_events);
+            close_trace_window(&app_handle);
         }
         _ => {}
     });
+}
+
+fn close_trace_window(app: &AppHandle) {
+    if let Some(trace) = app.get_webview_window("trace") {
+        let _ = trace.close();
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -167,6 +175,10 @@ pub fn run() {
             commands::run_agent,
             commands::stop_agent,
             commands::stop_streaming,
+            commands::open_trace_window,
+            commands::hide_trace_window,
+            commands::close_trace_window,
+            commands::is_trace_window_open,
             commands::save_settings,
             commands::load_settings,
             commands::list_models,

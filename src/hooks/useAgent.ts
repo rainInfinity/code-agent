@@ -11,6 +11,8 @@ import {
   onStreamError,
   onToolCall,
   onToolResult,
+  onTracePrompt,
+  onTraceWindowClosed,
   runAgent,
   stopAgent,
 } from '@/hooks/useIpc';
@@ -110,6 +112,9 @@ function ensureAgentListeners() {
           ],
         });
       }),
+      onTracePrompt(() => {
+        // Reserved for the trace window change.
+      }),
       onAgentTurn((event) => {
         useAgentStore.getState().setTurnCount(event.turnCount);
       }),
@@ -164,6 +169,27 @@ export function useAgent() {
 
   useEffect(() => {
     ensureAgentListeners();
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    onTraceWindowClosed(() => {
+      const { activeConversationId: currentId, setConversationTraceEnabled } = useChatStore.getState();
+      if (currentId) {
+        setConversationTraceEnabled(currentId, false);
+      }
+    })
+      .then((cleanup) => {
+        unlisten = cleanup;
+      })
+      .catch(() => {
+        unlisten = undefined;
+      });
+
+    return () => {
+      unlisten?.();
+    };
   }, []);
 
   const send = useCallback(
@@ -224,6 +250,8 @@ export function useAgent() {
           providerId: activeProviderId,
           conversationId: convId,
           assistantMessageId: assistantMsgId,
+          agentType: agentMode,
+          workDir: effectiveWorkDir,
           messages,
         });
         setRunning(sessionId);

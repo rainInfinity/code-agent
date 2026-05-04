@@ -2,7 +2,8 @@ use crate::agent::config::AgentConfig;
 use crate::llm::LlmClient;
 use crate::models::{
     AgentCompleteEvent, AgentStatus, AgentTurnEvent, ChatMessage, ContentBlock, StreamDeltaEvent,
-    StreamThinkingEvent, ToolCallEvent, ToolResult, ToolResultEvent,
+    StreamThinkingEvent, ToolCallEvent, ToolResult, ToolResultEvent, TracePromptEvent,
+    TraceThinkingEvent,
 };
 use crate::tools::ToolRegistry;
 use std::sync::Arc;
@@ -16,6 +17,9 @@ pub trait AgentEventEmitter: Send + Sync {
     fn emit_tool_call(&self, payload: ToolCallEvent);
     fn emit_tool_result(&self, payload: ToolResultEvent);
     fn emit_turn(&self, payload: AgentTurnEvent);
+    fn emit_trace_prompt(&self, payload: TracePromptEvent);
+    fn emit_trace_thinking_start(&self, payload: TraceThinkingEvent);
+    fn emit_trace_thinking_end(&self, payload: TraceThinkingEvent);
     fn emit_complete(&self, payload: AgentCompleteEvent);
 }
 
@@ -50,6 +54,18 @@ impl AgentEventEmitter for TauriAgentEventEmitter {
         let _ = self.app.emit("agent-turn", payload);
     }
 
+    fn emit_trace_prompt(&self, payload: TracePromptEvent) {
+        let _ = self.app.emit("trace-prompt", payload);
+    }
+
+    fn emit_trace_thinking_start(&self, payload: TraceThinkingEvent) {
+        let _ = self.app.emit("trace-thinking-start", payload);
+    }
+
+    fn emit_trace_thinking_end(&self, payload: TraceThinkingEvent) {
+        let _ = self.app.emit("trace-thinking-end", payload);
+    }
+
     fn emit_complete(&self, payload: AgentCompleteEvent) {
         let _ = self.app.emit("agent-complete", payload);
     }
@@ -61,6 +77,7 @@ pub struct AgentSession {
     pub config: AgentConfig,
     pub conversation_id: String,
     pub assistant_message_id: String,
+    pub work_dir: Option<String>,
     pub messages: Vec<ChatMessage>,
     pub turn_count: usize,
     pub token_usage: usize,
@@ -77,6 +94,8 @@ impl AgentSession {
         conversation_id: String,
         assistant_message_id: String,
         messages: Vec<ChatMessage>,
+        agent_type: String,
+        work_dir: Option<String>,
         config: AgentConfig,
         llm_client: LlmClient,
         tool_registry: Arc<ToolRegistry>,
@@ -90,10 +109,11 @@ impl AgentSession {
 
         Self {
             id: format!("agent-{}", created_at),
-            agent_type: "default".to_string(),
+            agent_type,
             config,
             conversation_id,
             assistant_message_id,
+            work_dir,
             messages,
             turn_count: 0,
             token_usage: 0,

@@ -20,10 +20,27 @@ impl LlmProvider for OpenAiProvider {
         Vec::new()
     }
 
-    fn build_chat_request(&self, model: &str, messages: &[ChatMessage]) -> serde_json::Value {
+    fn build_chat_request(
+        &self,
+        model: &str,
+        system: Option<String>,
+        messages: &[ChatMessage],
+    ) -> serde_json::Value {
+        let mut messages = messages.to_vec();
+        if let Some(system) = system.filter(|value| !value.trim().is_empty()) {
+            messages.insert(
+                0,
+                ChatMessage {
+                    role: "system".to_string(),
+                    content: system.clone(),
+                    content_blocks: Some(vec![ContentBlock::Text { text: system }]),
+                },
+            );
+        }
+
         serde_json::json!(OpenAiChatRequest {
             model: model.to_string(),
-            messages: messages.to_vec(),
+            messages,
             stream: true,
         })
     }

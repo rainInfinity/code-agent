@@ -38,6 +38,10 @@ pub struct SendMessagePayload {
     pub conversation_id: String,
     pub assistant_message_id: String,
     pub messages: Vec<ChatMessage>,
+    #[serde(default)]
+    pub agent_type: Option<String>,
+    #[serde(default)]
+    pub work_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -47,6 +51,10 @@ pub struct RunAgentPayload {
     pub conversation_id: String,
     pub assistant_message_id: String,
     pub messages: Vec<ChatMessage>,
+    #[serde(default)]
+    pub agent_type: Option<String>,
+    #[serde(default)]
+    pub work_dir: Option<String>,
     #[serde(default)]
     pub max_turns: Option<usize>,
 }
@@ -198,6 +206,8 @@ pub fn default_provider_id() -> String {
 pub struct AnthropicRequest {
     pub model: String,
     pub max_tokens: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system: Option<String>,
     pub messages: Vec<serde_json::Value>,
     pub stream: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -357,6 +367,38 @@ pub struct AgentCompleteEvent {
     pub message_id: String,
     pub status: AgentStatus,
     pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TracePromptEvent {
+    pub conversation_id: String,
+    pub session_id: String,
+    pub turn: usize,
+    pub system_prompt: String,
+    pub messages: Vec<ChatMessage>,
+    pub tools: Vec<ToolDefinition>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TraceThinkingEvent {
+    pub conversation_id: String,
+    pub session_id: String,
+    pub turn: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionContext {
+    pub os: String,
+    pub shell: String,
+    pub arch: String,
+    pub cwd: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_status: Option<String>,
 }
 
 // ─── Tool System Types ──────────────────────────────────────

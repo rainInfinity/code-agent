@@ -76,6 +76,7 @@ impl LlmClient {
     /// Send a streaming request to the active provider.
     pub async fn stream_chat(
         &self,
+        system_prompt: Option<String>,
         messages: Vec<ChatMessage>,
         mut on_delta: impl FnMut(String),
         mut on_thinking_delta: impl FnMut(String),
@@ -87,7 +88,7 @@ impl LlmClient {
             self.api_endpoint.trim_end_matches('/'),
             provider.chat_path()
         );
-        let request_body = provider.build_chat_request(&self.model, &messages);
+        let request_body = provider.build_chat_request(&self.model, system_prompt, &messages);
         let (auth_name, auth_value) = provider.auth_header(&self.api_key);
 
         let mut request = self
@@ -158,6 +159,7 @@ impl LlmClient {
 
     pub async fn stream_chat_with_tools(
         &self,
+        system_prompt: Option<String>,
         messages: Vec<ChatMessage>,
         tools: Vec<ToolDefinition>,
         cancel_token: CancellationToken,
@@ -172,7 +174,7 @@ impl LlmClient {
             self.api_endpoint.trim_end_matches('/'),
             provider.chat_path()
         );
-        let mut request_body = provider.build_chat_request(&self.model, &messages);
+        let mut request_body = provider.build_chat_request(&self.model, system_prompt, &messages);
         if matches!(self.provider_id.as_str(), "anthropic" | "deepseek") && !tools.is_empty() {
             if let Some(object) = request_body.as_object_mut() {
                 object.insert(
@@ -261,8 +263,13 @@ impl LlmClient {
                             }
                             Ok(Some(ParseResult::ToolUseComplete { index })) => {
                                 if let Some(tool) = pending_tools.remove(&index) {
+                                    let raw = if tool.input_json.trim().is_empty() {
+                                        "{}"
+                                    } else {
+                                        &tool.input_json
+                                    };
                                     let input =
-                                        serde_json::from_str(&tool.input_json).map_err(|e| {
+                                        serde_json::from_str(raw).map_err(|e| {
                                             format!("Failed to parse tool input JSON: {}", e)
                                         })?;
                                     on_tool_call(ToolCall {

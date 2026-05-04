@@ -171,24 +171,42 @@ const pulse = keyframes`
   50% { opacity: 1; }
 `;
 
+const shimmer = keyframes`
+  0% { background-position: 200% 50%; }
+  100% { background-position: 0% 50%; }
+`;
+
+const blink = keyframes`
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+`;
+
 const ThinkingIndicator = styled.div`
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: ${({ theme }) => theme.spacing.sm};
   padding: ${({ theme }) => theme.spacing.sm} 0;
+  color: ${({ theme }) => theme.colors.textSecondary};
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
 
-  span {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background-color: ${({ theme }) => theme.colors.accentPrimary};
-    animation: ${pulse} 1.4s infinite ease-in-out;
+  &::before {
+    content: "";
+    width: 42px;
+    height: 4px;
+    border-radius: ${({ theme }) => theme.borderRadius.full};
+    background: linear-gradient(
+      90deg,
+      ${({ theme }) => theme.colors.border},
+      ${({ theme }) => theme.colors.accentPrimary},
+      ${({ theme }) => theme.colors.border}
+    );
+    background-size: 200% 100%;
+    animation: ${shimmer} 1.1s linear infinite;
+  }
 
-    &:nth-child(2) {
-      animation-delay: 0.2s;
-    }
-    &:nth-child(3) {
-      animation-delay: 0.4s;
+  @media (prefers-reduced-motion: reduce) {
+    &::before {
+      animation: none;
     }
   }
 `;
@@ -230,31 +248,85 @@ const ToolBody = styled.pre`
   font-size: ${({ theme }) => theme.typography.fontSize.sm};
 `;
 
-const ThinkingPanelShell = styled.details`
+const ThinkingPanelShell = styled.div<{ $isThinking: boolean }>`
   margin: ${({ theme }) => theme.spacing.sm} 0;
-  border: 1px solid ${({ theme }) => theme.colors.border};
+  border: 1px solid transparent;
   border-radius: ${({ theme }) => theme.borderRadius.md};
-  background-color: ${({ theme }) => theme.colors.bgSecondary};
+  background:
+    linear-gradient(
+      ${({ theme }) => theme.colors.bgSecondary},
+      ${({ theme }) => theme.colors.bgSecondary}
+    ) padding-box,
+    ${({ theme, $isThinking }) =>
+      $isThinking
+        ? `linear-gradient(90deg, ${theme.colors.border}, ${theme.colors.accentPrimary}, ${theme.colors.border})`
+        : `linear-gradient(${theme.colors.border}, ${theme.colors.border})`} border-box;
+  background-size: ${({ $isThinking }) => ($isThinking ? "100% 100%, 200% 100%" : "100% 100%")};
+  animation: ${({ $isThinking }) => ($isThinking ? shimmer : "none")} 1.6s linear infinite;
   text-align: left;
 
-  summary {
-    display: flex;
-    align-items: center;
-    gap: ${({ theme }) => theme.spacing.xs};
-    cursor: pointer;
-    padding: ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.md};
-    color: ${({ theme }) => theme.colors.textSecondary};
-    font-size: ${({ theme }) => theme.typography.fontSize.sm};
-    font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+`;
+
+const ThinkingPanelHeader = styled.button`
+  display: flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing.sm};
+  width: 100%;
+  min-height: 38px;
+  padding: ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.md};
+  color: ${({ theme }) => theme.colors.textSecondary};
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
+  font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
+  text-align: left;
+
+  &:hover {
+    background-color: ${({ theme }) => theme.colors.bgHover};
+  }
+
+  &:focus-visible {
+    outline: 2px solid ${({ theme }) => theme.colors.inputBorderFocus};
+    outline-offset: -2px;
   }
 `;
 
 const ThinkingPulse = styled.span`
   width: 7px;
   height: 7px;
+  min-width: 7px;
   border-radius: 50%;
   background-color: ${({ theme }) => theme.colors.accentPrimary};
   animation: ${pulse} 1.4s infinite ease-in-out;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+`;
+
+const ThinkingStatusIcon = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  min-width: 12px;
+  color: ${({ theme }) => theme.colors.success};
+`;
+
+const ThinkingHeaderText = styled.span`
+  min-width: 0;
+  flex: 1;
+`;
+
+const ThinkingMeta = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing.xs};
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  color: ${({ theme }) => theme.colors.textTertiary};
+  font-size: ${({ theme }) => theme.typography.fontSize.xs};
 `;
 
 const ThinkingBody = styled.pre`
@@ -267,6 +339,16 @@ const ThinkingBody = styled.pre`
   white-space: pre-wrap;
   word-break: break-word;
   font-size: ${({ theme }) => theme.typography.fontSize.sm};
+`;
+
+const BlinkingCursor = styled.span`
+  display: inline-block;
+  color: ${({ theme }) => theme.colors.accentPrimary};
+  animation: ${blink} 0.6s steps(1, end) infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
 `;
 
 const ToolIndicator = styled.div`
@@ -292,6 +374,104 @@ const makeStreamingMarkdownRenderable = (content: string) => {
   return content;
 };
 
+const formatThinkingDuration = (durationMs: number) => {
+  if (durationMs < 1000) {
+    return appMessages.messages.durationMs(Math.max(0, Math.round(durationMs)));
+  }
+
+  if (durationMs < 60000) {
+    return appMessages.messages.durationS(durationMs / 1000);
+  }
+
+  const totalSeconds = Math.floor(durationMs / 1000);
+  return appMessages.messages.durationMS(
+    Math.floor(totalSeconds / 60),
+    totalSeconds % 60,
+  );
+};
+
+const ThinkingPanel: React.FC<{ message: Message }> = ({ message }) => {
+  const bodyRef = useRef<HTMLPreElement>(null);
+  const hasAutoCollapsedRef = useRef(Boolean(message.content));
+  const [isOpen, setIsOpen] = useState(!message.content);
+  const [elapsedMs, setElapsedMs] = useState(() =>
+    message.thinkingStartedAt ? Date.now() - message.thinkingStartedAt : 0,
+  );
+  const thinkingContent = message.thinkingContent ?? "";
+  const isThinking = message.status === "streaming" && !message.content;
+  const tokenEstimate = thinkingContent
+    ? Math.round(thinkingContent.length * 0.25)
+    : null;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const body = bodyRef.current;
+    if (!body || body.scrollHeight <= body.clientHeight) return;
+    body.scrollTop = body.scrollHeight;
+  }, [isOpen, thinkingContent]);
+
+  useEffect(() => {
+    if (!message.thinkingStartedAt) {
+      setElapsedMs(0);
+      return;
+    }
+
+    const updateElapsed = () => {
+      setElapsedMs(Date.now() - message.thinkingStartedAt!);
+    };
+
+    updateElapsed();
+    if (!isThinking) return;
+
+    const timer = window.setInterval(updateElapsed, 100);
+    return () => window.clearInterval(timer);
+  }, [isThinking, message.id, message.thinkingStartedAt]);
+
+  useEffect(() => {
+    if (message.content && !hasAutoCollapsedRef.current) {
+      setIsOpen(false);
+      hasAutoCollapsedRef.current = true;
+    }
+  }, [message.content]);
+
+  return (
+    <ThinkingPanelShell $isThinking={isThinking}>
+      <ThinkingPanelHeader
+        type="button"
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen((value) => !value)}
+      >
+        {isThinking ? (
+          <ThinkingPulse aria-hidden="true" />
+        ) : (
+          <ThinkingStatusIcon aria-hidden="true">
+            <FaCheck size={11} />
+          </ThinkingStatusIcon>
+        )}
+        <ThinkingHeaderText>
+          {isThinking
+            ? appMessages.messages.thinkingInProgress
+            : appMessages.messages.thinkingComplete}
+        </ThinkingHeaderText>
+        <ThinkingMeta>
+          {message.thinkingStartedAt ? <span>{formatThinkingDuration(elapsedMs)}</span> : null}
+          {tokenEstimate !== null ? (
+            <span>
+              ~{tokenEstimate} {appMessages.messages.tokens}
+            </span>
+          ) : null}
+        </ThinkingMeta>
+      </ThinkingPanelHeader>
+      {isOpen ? (
+        <ThinkingBody ref={bodyRef}>
+          {thinkingContent}
+          {isThinking ? <BlinkingCursor aria-hidden="true">▌</BlinkingCursor> : null}
+        </ThinkingBody>
+      ) : null}
+    </ThinkingPanelShell>
+  );
+};
+
 const MessageBodyContent: React.FC<{ message: Message }> = ({ message }) => {
   const { status, content, thinkingContent, toolCalls, toolResults } = message;
 
@@ -299,12 +479,10 @@ const MessageBodyContent: React.FC<{ message: Message }> = ({ message }) => {
     return <ErrorMessage>{content || appMessages.messages.errorFallback}</ErrorMessage>;
   }
 
-  if (status === "streaming" && !content) {
+  if (status === "streaming" && !content && !thinkingContent) {
     return (
       <ThinkingIndicator>
-        <span />
-        <span />
-        <span />
+        <span>{appMessages.messages.thinkingInProgress}</span>
       </ThinkingIndicator>
     );
   }
@@ -312,13 +490,7 @@ const MessageBodyContent: React.FC<{ message: Message }> = ({ message }) => {
   return (
     <>
       {thinkingContent ? (
-        <ThinkingPanelShell open>
-          <summary>
-            {status === "streaming" && <ThinkingPulse aria-hidden="true" />}
-            Thinking
-          </summary>
-          <ThinkingBody>{thinkingContent}</ThinkingBody>
-        </ThinkingPanelShell>
+        <ThinkingPanel message={message} />
       ) : null}
       {content ? (
         <MarkdownRenderer

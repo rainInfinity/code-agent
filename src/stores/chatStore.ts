@@ -27,6 +27,7 @@ interface ChatState {
   getActiveConversation: () => Conversation | undefined;
   getFilteredConversations: () => Conversation[];
   setSelectedWorkDir: (path: string | null) => void;
+  setConversationTraceEnabled: (conversationId: string, traceEnabled: boolean) => void;
 
   // Message actions
   addMessage: (conversationId: string, message: Omit<Message, 'id' | 'timestamp'>) => string;
@@ -41,6 +42,7 @@ interface ChatState {
 function normalizePersistedConversations(conversations: Conversation[]): Conversation[] {
   return conversations.map((conversation) => ({
     ...conversation,
+    traceEnabled: conversation.traceEnabled ?? false,
     messages: conversation.messages.map((message) =>
       message.status === 'streaming' || message.status === 'pending'
         ? {
@@ -112,6 +114,19 @@ export const useChatStore = create<ChatState>()(
       },
 
       setSelectedWorkDir: (path: string | null) => set({ selectedWorkDir: path }),
+
+      setConversationTraceEnabled: (conversationId: string, traceEnabled: boolean) =>
+        set((state) => ({
+          conversations: state.conversations.map((conversation) =>
+            conversation.id === conversationId
+              ? {
+                  ...conversation,
+                  traceEnabled,
+                  updatedAt: Date.now(),
+                }
+              : conversation,
+          ),
+        })),
 
       addMessage: (conversationId: string, message: Omit<Message, 'id' | 'timestamp'>) => {
         const id = generateId();
@@ -199,11 +214,15 @@ export const useChatStore = create<ChatState>()(
             c.id === conversationId
               ? {
                   ...c,
-                  messages: c.messages.map((m) =>
-                    m.id === messageId
-                      ? { ...m, thinkingContent: `${m.thinkingContent ?? ''}${delta}` }
-                      : m,
-                  ),
+                  messages: c.messages.map((m) => {
+                    if (m.id !== messageId) return m;
+
+                    return {
+                      ...m,
+                      thinkingContent: `${m.thinkingContent ?? ''}${delta}`,
+                      thinkingStartedAt: m.thinkingStartedAt ?? Date.now(),
+                    };
+                  }),
                   updatedAt: Date.now(),
                 }
               : c,
