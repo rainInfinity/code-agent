@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tokio_util::sync::CancellationToken;
 
 const SETTINGS_FILE: &str = "settings.json";
@@ -26,48 +26,47 @@ pub struct AppState {
 }
 
 #[tauri::command]
-pub async fn open_trace_window(app: AppHandle) -> Result<(), String> {
+pub async fn open_trace_window(
+    app: AppHandle,
+    conversation_id: Option<String>,
+) -> Result<(), String> {
     if let Some(trace) = app.get_webview_window(TRACE_WINDOW_LABEL) {
         trace.show().map_err(|e| e.to_string())?;
         trace.set_focus().map_err(|e| e.to_string())?;
         return Ok(());
     }
 
-    let (trace_width, trace_height) = app
-        .get_webview_window("main")
-        .and_then(|main| main.outer_size().ok())
-        .map(|size| {
-            (
-                (size.width as f64 * 0.8).max(TRACE_WINDOW_MIN_WIDTH),
-                (size.height as f64 * 0.8).max(TRACE_WINDOW_MIN_HEIGHT),
-            )
-        })
-        .unwrap_or((TRACE_WINDOW_WIDTH, 600.0));
+    let url_path = if let Some(ref id) = conversation_id {
+        format!("index.html?window=trace&conversationId={}", id)
+    } else {
+        "index.html?window=trace".to_string()
+    };
 
     #[cfg(debug_assertions)]
     let url = WebviewUrl::External(
-        "http://localhost:1420/trace.html".parse().unwrap(),
+        format!("http://localhost:1420/{}", url_path)
+            .parse()
+            .unwrap(),
     );
     #[cfg(not(debug_assertions))]
-    let url = WebviewUrl::App("trace.html".into());
+    let url = WebviewUrl::App(url_path.into());
 
-    let trace = WebviewWindowBuilder::new(&app, TRACE_WINDOW_LABEL, url)
-    .title("Agent Trace")
-    .inner_size(trace_width, trace_height)
-    .min_inner_size(TRACE_WINDOW_MIN_WIDTH, TRACE_WINDOW_MIN_HEIGHT)
-    .resizable(true)
-    .decorations(false)
-    .center()
-    .visible(true)
-    .build()
-    .map_err(|e| e.to_string())?;
+    let builder = WebviewWindowBuilder::new(&app, TRACE_WINDOW_LABEL, url)
+        .title("Agent Trace")
+        .inner_size(TRACE_WINDOW_WIDTH, 600.0)
+        .min_inner_size(TRACE_WINDOW_MIN_WIDTH, TRACE_WINDOW_MIN_HEIGHT)
+        .resizable(true)
+        .decorations(false)
+        .visible(true);
 
-    let app_for_close = app.clone();
-    trace.on_window_event(move |event| {
-        if matches!(event, WindowEvent::CloseRequested { .. }) {
-            let _ = app_for_close.emit("trace-window-closed", ());
-        }
-    });
+    // Restore persisted state if available, otherwise center
+    let trace = builder.build().map_err(|e| e.to_string())?;
+    let had_state = crate::restore_trace_window_state(&app, &trace);
+    if !had_state {
+        let _ = trace.center();
+    }
+
+    crate::setup_trace_window_state(&app, &trace);
 
     Ok(())
 }
@@ -75,8 +74,19 @@ pub async fn open_trace_window(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn hide_trace_window(app: AppHandle) -> Result<(), String> {
     if let Some(trace) = app.get_webview_window(TRACE_WINDOW_LABEL) {
+        crate::save_trace_window_state(&app);
         trace.hide().map_err(|e| e.to_string())?;
         let _ = app.emit("trace-window-closed", ());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_trace_always_on_top(app: AppHandle, always_on_top: bool) -> Result<(), String> {
+    if let Some(trace) = app.get_webview_window(TRACE_WINDOW_LABEL) {
+        trace
+            .set_always_on_top(always_on_top)
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -211,13 +221,15 @@ pub async fn send_message(
         .await;
 
     match result {
-        Ok(full_content) => {
+        Ok(result) => {
             let _ = app.emit(
                 "stream-end",
                 StreamEndEvent {
                     conversation_id,
                     message_id,
-                    full_content,
+                    full_content: result.full_content,
+                    input_tokens: result.usage.input_tokens,
+                    output_tokens: result.usage.output_tokens,
                 },
             );
             Ok(())

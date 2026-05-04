@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { FaChevronDown, FaChevronRight } from 'react-icons/fa6';
 import { messages } from '@/i18n';
@@ -55,13 +55,75 @@ const Meta = styled.span<{ $status: TurnTrace['status'] }>`
   font-size: ${({ theme }) => theme.typography.fontSize.xs};
 `;
 
+const MetaGroup = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing.sm};
+  flex-wrap: wrap;
+  justify-content: flex-end;
+`;
+
+const UsageMeta = styled.span`
+  color: ${({ theme }) => theme.colors.textTertiary};
+  font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  white-space: nowrap;
+`;
+
+const TimeMeta = styled.span`
+  color: ${({ theme }) => theme.colors.textTertiary};
+  font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  white-space: nowrap;
+`;
+
 const Body = styled.div`
   padding: 0 ${({ theme }) => theme.spacing.md} ${({ theme }) => theme.spacing.md};
 `;
 
+const formatTokenCount = (value: number) =>
+  value > 1000 ? `${(value / 1000).toFixed(1)}k` : String(value);
+
+const formatDuration = (durationMs: number) => {
+  if (durationMs < 1000) {
+    return messages.messages.durationMs(Math.max(0, Math.round(durationMs)));
+  }
+
+  if (durationMs < 60000) {
+    return messages.messages.durationS(durationMs / 1000);
+  }
+
+  const totalSeconds = Math.floor(durationMs / 1000);
+  return messages.messages.durationMS(
+    Math.floor(totalSeconds / 60),
+    totalSeconds % 60,
+  );
+};
+
+const formatStartTime = (timestamp: number) =>
+  new Date(timestamp).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+
 export const TurnCard: React.FC<{ turn: TurnTrace }> = ({ turn }) => {
   const [expanded, setExpanded] = useState(true);
+  const [elapsedMs, setElapsedMs] = useState(() => (turn.endTime ?? Date.now()) - turn.startTime);
   const Chevron = expanded ? FaChevronDown : FaChevronRight;
+  const hasUsage =
+    turn.usage !== undefined &&
+    (turn.usage.inputTokens > 0 || turn.usage.outputTokens > 0);
+
+  useEffect(() => {
+    const updateElapsed = () => {
+      setElapsedMs((turn.endTime ?? Date.now()) - turn.startTime);
+    };
+
+    updateElapsed();
+    if (turn.status !== 'running') return;
+
+    const timer = window.setInterval(updateElapsed, 100);
+    return () => window.clearInterval(timer);
+  }, [turn.endTime, turn.startTime, turn.status]);
 
   return (
     <Card>
@@ -70,7 +132,19 @@ export const TurnCard: React.FC<{ turn: TurnTrace }> = ({ turn }) => {
           <Chevron />
           {messages.trace.turn(turn.turnNumber)}
         </Title>
-        <Meta $status={turn.status}>{messages.trace.turnStatus[turn.status]}</Meta>
+        <MetaGroup>
+          <Meta $status={turn.status}>{messages.trace.turnStatus[turn.status]}</Meta>
+          <TimeMeta title={messages.trace.timePrefix(formatStartTime(turn.startTime))}>
+            {messages.trace.timePrefix(formatStartTime(turn.startTime))} · {formatDuration(elapsedMs)}
+          </TimeMeta>
+          {hasUsage ? (
+            <UsageMeta
+              title={`${messages.trace.inputTokens}: ${turn.usage!.inputTokens}; ${messages.trace.outputTokens}: ${turn.usage!.outputTokens}`}
+            >
+              ↑{formatTokenCount(turn.usage!.inputTokens)} ↓{formatTokenCount(turn.usage!.outputTokens)}
+            </UsageMeta>
+          ) : null}
+        </MetaGroup>
       </Header>
       {expanded && (
         <Body>

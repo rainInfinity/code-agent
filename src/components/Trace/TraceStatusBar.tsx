@@ -2,7 +2,9 @@ import type React from 'react';
 import styled, { keyframes } from 'styled-components';
 import { FaCircle } from 'react-icons/fa6';
 import { messages } from '@/i18n';
+import { useChatStore } from '@/stores/chatStore';
 import { useTraceStore } from '@/stores/traceStore';
+import type { TurnTrace } from '@/types';
 
 const pulse = keyframes`
   0%, 100% { opacity: 0.45; transform: scale(0.9); }
@@ -42,9 +44,14 @@ const Dot = styled(FaCircle)<{ $status: 'idle' | 'running' | 'complete' | 'error
   animation: ${({ $status }) => ($status === 'running' ? pulse : 'none')} 1.2s ease-in-out infinite;
 `;
 
+const EMPTY_TURNS: TurnTrace[] = [];
+
 export const TraceStatusBar: React.FC = () => {
   const status = useTraceStore((state) => state.agentStatus);
-  const turns = useTraceStore((state) => state.turns);
+  const conversationId = useTraceStore((state) => state.conversationId);
+  const turns = useChatStore((state) =>
+    state.conversations.find((conversation) => conversation.id === conversationId)?.turns ?? EMPTY_TURNS,
+  );
   const currentTurn = turns[turns.length - 1];
   const phase = currentTurn?.response.content
     ? messages.trace.response

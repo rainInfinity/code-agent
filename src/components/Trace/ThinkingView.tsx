@@ -2,6 +2,8 @@ import type React from 'react';
 import styled from 'styled-components';
 import { messages } from '@/i18n';
 import type { TurnTrace } from '@/types';
+import { TraceCopyButton } from './TraceCopyButton';
+import { useCopyFeedback } from './useCopyFeedback';
 
 const Section = styled.section`
   border-top: 1px solid ${({ theme }) => theme.colors.borderSubtle};
@@ -13,7 +15,14 @@ const Header = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: ${({ theme }) => theme.spacing.sm};
   font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
+`;
+
+const HeaderMeta = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing.sm};
 `;
 
 const State = styled.span`
@@ -37,13 +46,25 @@ const Content = styled.pre`
 `;
 
 export const ThinkingView: React.FC<{ thinking: TurnTrace['thinking'] }> = ({ thinking }) => {
+  const { copyTone, copyText } = useCopyFeedback();
   if (!thinking.content && thinking.status === 'idle') return null;
 
   return (
     <Section>
       <Header>
         <span>{messages.trace.thinking}</span>
-        <State>{messages.trace.thinkingStatus[thinking.status]}</State>
+        <HeaderMeta>
+          <State>{messages.trace.thinkingStatus[thinking.status]}</State>
+          {thinking.content ? (
+            <TraceCopyButton
+              tone={copyTone}
+              idleLabel={messages.trace.copyThinking}
+              onClick={() => {
+                void copyText(thinking.content);
+              }}
+            />
+          ) : null}
+        </HeaderMeta>
       </Header>
       <Content>{thinking.content || messages.trace.noThinking}</Content>
     </Section>

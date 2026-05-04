@@ -24,6 +24,10 @@ pub enum ParseResult {
     ToolUseComplete {
         index: usize,
     },
+    Usage {
+        input_tokens: u32,
+        output_tokens: u32,
+    },
 }
 
 pub trait LlmProvider: Send + Sync {

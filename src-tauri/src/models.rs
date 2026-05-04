@@ -147,6 +147,12 @@ pub struct OpenAiChatRequest {
     pub model: String,
     pub messages: Vec<ChatMessage>,
     pub stream: bool,
+    pub stream_options: OpenAiStreamOptions,
+}
+
+#[derive(Debug, Serialize)]
+pub struct OpenAiStreamOptions {
+    pub include_usage: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -179,6 +185,8 @@ pub struct OpenAiDelta {
 pub struct OpenAiStreamChunk {
     #[serde(default)]
     pub choices: Vec<OpenAiChoice>,
+    #[serde(default)]
+    pub usage: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -311,6 +319,8 @@ pub struct StreamEndEvent {
     pub conversation_id: String,
     pub message_id: String,
     pub full_content: String,
+    pub input_tokens: u32,
+    pub output_tokens: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -367,6 +377,8 @@ pub struct AgentCompleteEvent {
     pub message_id: String,
     pub status: AgentStatus,
     pub reason: String,
+    pub input_tokens: u32,
+    pub output_tokens: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]

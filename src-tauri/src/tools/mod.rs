@@ -26,9 +26,7 @@ impl ToolRegistry {
     }
 
     pub fn with_defaults() -> Self {
-        let mut registry = Self::new();
-        registry.register(Arc::new(EchoTool));
-        registry
+        Self::new()
     }
 
     pub fn register(&mut self, tool: Arc<dyn Tool>) {
@@ -51,42 +49,15 @@ impl ToolRegistry {
     }
 }
 
-pub struct EchoTool;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#[async_trait]
-impl Tool for EchoTool {
-    fn name(&self) -> String {
-        "echo".to_string()
-    }
+    #[test]
+    fn defaults_do_not_expose_test_tools() {
+        let registry = ToolRegistry::with_defaults();
 
-    fn description(&self) -> String {
-        "Echoes back the input message. Used for testing the tool system.".to_string()
-    }
-
-    fn parameters_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "message": {
-                    "type": "string",
-                    "description": "The message to echo back"
-                }
-            },
-            "required": ["message"],
-            "additionalProperties": false
-        })
-    }
-
-    async fn execute(&self, params: Value) -> Result<ToolResult, String> {
-        let message = params
-            .get("message")
-            .and_then(|value| value.as_str())
-            .unwrap_or("(empty)");
-
-        Ok(ToolResult {
-            success: true,
-            output: format!("Echo: {}", message),
-            error: None,
-        })
+        assert!(registry.definitions().is_empty());
+        assert!(registry.get("echo").is_none());
     }
 }

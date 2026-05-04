@@ -42,6 +42,9 @@ impl LlmProvider for OpenAiProvider {
             model: model.to_string(),
             messages,
             stream: true,
+            stream_options: OpenAiStreamOptions {
+                include_usage: true,
+            },
         })
     }
 
@@ -51,6 +54,21 @@ impl LlmProvider for OpenAiProvider {
         }
         let chunk = serde_json::from_str::<OpenAiStreamChunk>(data)
             .map_err(|e| format!("Failed to parse OpenAI stream event: {}", e))?;
+        if chunk.choices.is_empty() {
+            if let Some(usage) = chunk.usage {
+                return Ok(Some(ParseResult::Usage {
+                    input_tokens: usage
+                        .get("prompt_tokens")
+                        .and_then(|value| value.as_u64())
+                        .unwrap_or(0) as u32,
+                    output_tokens: usage
+                        .get("completion_tokens")
+                        .and_then(|value| value.as_u64())
+                        .unwrap_or(0) as u32,
+                }));
+            }
+            return Ok(None);
+        }
         Ok(chunk
             .choices
             .first()

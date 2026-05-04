@@ -103,7 +103,7 @@ pub async fn agent_loop(session: &mut AgentSession) -> Result<AgentStatus, Strin
         });
         let cancel_token = session.cancel_token.clone();
 
-        let full_content = match session
+        let stream_result = match session
             .llm_client
             .stream_chat_with_tools(
                 Some(prompt.system_prompt),
@@ -160,13 +160,13 @@ pub async fn agent_loop(session: &mut AgentSession) -> Result<AgentStatus, Strin
             )
             .await
         {
-            Ok(full_content) => {
+            Ok(result) => {
                 emitter.emit_trace_thinking_end(TraceThinkingEvent {
                     conversation_id: session.conversation_id.clone(),
                     session_id: session.id.clone(),
                     turn: session.turn_count,
                 });
-                full_content
+                result
             }
             Err(error) => {
                 emitter.emit_trace_thinking_end(TraceThinkingEvent {
@@ -177,6 +177,13 @@ pub async fn agent_loop(session: &mut AgentSession) -> Result<AgentStatus, Strin
                 return complete(session, AgentStatus::Error, &error).await;
             }
         };
+        session.input_token_usage = session
+            .input_token_usage
+            .saturating_add(stream_result.usage.input_tokens);
+        session.output_token_usage = session
+            .output_token_usage
+            .saturating_add(stream_result.usage.output_tokens);
+        session.token_usage += stream_result.usage.total();
 
         let tool_calls = tool_calls.lock().unwrap().clone();
         let tool_blocks = tool_calls
@@ -187,7 +194,7 @@ pub async fn agent_loop(session: &mut AgentSession) -> Result<AgentStatus, Strin
                 input: tool_call.input.clone(),
             })
             .collect();
-        session.add_assistant_message(full_content, tool_blocks);
+        session.add_assistant_message(stream_result.full_content, tool_blocks);
 
         if tool_calls.is_empty() {
             return complete(session, AgentStatus::Complete, "Complete").await;
@@ -241,6 +248,8 @@ async fn complete(
         message_id: session.assistant_message_id.clone(),
         status: status.clone(),
         reason: reason.to_string(),
+        input_tokens: session.input_token_usage,
+        output_tokens: session.output_token_usage,
     });
     Ok(status)
 }

@@ -4,6 +4,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
+  Conversation,
   ProviderId,
   ProviderSettingsMap,
   StreamEvent,
@@ -54,8 +55,8 @@ export async function stopAgent(sessionId: string): Promise<void> {
   return invoke('stop_agent', { sessionId });
 }
 
-export async function openTraceWindow(): Promise<void> {
-  return invoke('open_trace_window');
+export async function openTraceWindow(conversationId?: string): Promise<void> {
+  return invoke('open_trace_window', { conversationId: conversationId ?? null });
 }
 
 export async function closeTraceWindow(): Promise<void> {
@@ -68,6 +69,10 @@ export async function hideTraceWindow(): Promise<void> {
 
 export async function isTraceWindowOpen(): Promise<boolean> {
   return invoke('is_trace_window_open');
+}
+
+export async function setTraceAlwaysOnTop(alwaysOnTop: boolean): Promise<void> {
+  return invoke('set_trace_always_on_top', { alwaysOnTop });
 }
 
 /** Save settings to the Rust backend */
@@ -170,6 +175,34 @@ export async function onTraceConversationChanged(
   callback: (event: { conversationId: string }) => void,
 ): Promise<UnlistenFn> {
   return listen<{ conversationId: string }>('trace-conversation-changed', (e) => callback(e.payload));
+}
+
+export async function emitTracePinChanged(isPinned: boolean): Promise<void> {
+  return emit('trace-pin-changed', { isPinned });
+}
+
+export async function onTracePinChanged(
+  callback: (event: { isPinned: boolean }) => void,
+): Promise<UnlistenFn> {
+  return listen<{ isPinned: boolean }>('trace-pin-changed', (e) => callback(e.payload));
+}
+
+export async function emitTraceWindowReady(): Promise<void> {
+  return emit('trace-window-ready', {});
+}
+
+export async function onTraceWindowReady(callback: () => void): Promise<UnlistenFn> {
+  return listen('trace-window-ready', () => callback());
+}
+
+export async function emitTraceSyncConversations(conversations: Conversation[]): Promise<void> {
+  return emit('trace-sync-conversations', { conversations });
+}
+
+export async function onTraceSyncConversations(
+  callback: (event: { conversations: Conversation[] }) => void,
+): Promise<UnlistenFn> {
+  return listen<{ conversations: Conversation[] }>('trace-sync-conversations', (e) => callback(e.payload));
 }
 
 export async function emitThemeChanged(theme: 'dark' | 'light'): Promise<void> {

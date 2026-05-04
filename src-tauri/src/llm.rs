@@ -22,6 +22,31 @@ pub struct ToolCall {
     pub input: Value,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TokenUsage {
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+}
+
+impl TokenUsage {
+    fn apply_delta(&mut self, input_tokens: u32, output_tokens: u32) {
+        self.input_tokens = self.input_tokens.max(input_tokens);
+        if output_tokens > 0 {
+            self.output_tokens = output_tokens;
+        }
+    }
+
+    pub fn total(self) -> usize {
+        self.input_tokens as usize + self.output_tokens as usize
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LlmStreamResult {
+    pub full_content: String,
+    pub usage: TokenUsage,
+}
+
 struct PendingToolUse {
     id: String,
     name: String,
@@ -81,7 +106,7 @@ impl LlmClient {
         mut on_delta: impl FnMut(String),
         mut on_thinking_delta: impl FnMut(String),
         mut on_error: impl FnMut(String),
-    ) -> Result<String, String> {
+    ) -> Result<LlmStreamResult, String> {
         let provider = provider_from_id(&self.provider_id)?;
         let url = format!(
             "{}{}",
@@ -113,6 +138,7 @@ impl LlmClient {
         }
 
         let mut full_content = String::new();
+        let mut usage = TokenUsage::default();
         let mut stream = response.bytes_stream();
 
         let mut buffer = String::new();
@@ -138,10 +164,19 @@ impl LlmClient {
                             Ok(Some(ParseResult::ThinkingDelta(delta))) => {
                                 on_thinking_delta(delta);
                             }
+                            Ok(Some(ParseResult::Usage {
+                                input_tokens,
+                                output_tokens,
+                            })) => {
+                                usage.apply_delta(input_tokens, output_tokens);
+                            }
                             Ok(Some(_)) => {}
                             Ok(None) => {
                                 if data.trim() == "[DONE]" {
-                                    return Ok(full_content);
+                                    return Ok(LlmStreamResult {
+                                        full_content,
+                                        usage,
+                                    });
                                 }
                             }
                             Err(error) => {
@@ -154,7 +189,10 @@ impl LlmClient {
             }
         }
 
-        Ok(full_content)
+        Ok(LlmStreamResult {
+            full_content,
+            usage,
+        })
     }
 
     pub async fn stream_chat_with_tools(
@@ -167,7 +205,7 @@ impl LlmClient {
         mut on_thinking_delta: impl FnMut(String),
         mut on_tool_call: impl FnMut(ToolCall),
         mut on_error: impl FnMut(String),
-    ) -> Result<String, String> {
+    ) -> Result<LlmStreamResult, String> {
         let provider = provider_from_id(&self.provider_id)?;
         let url = format!(
             "{}{}",
@@ -208,6 +246,7 @@ impl LlmClient {
         }
 
         let mut full_content = String::new();
+        let mut usage = TokenUsage::default();
         let mut stream = response.bytes_stream();
         let mut buffer = String::new();
         let mut pending_tools: HashMap<usize, PendingToolUse> = HashMap::new();
@@ -232,7 +271,10 @@ impl LlmClient {
                 for line in event_text.lines() {
                     if let Some(data) = line.strip_prefix("data: ") {
                         if data.trim() == "[DONE]" {
-                            return Ok(full_content);
+                            return Ok(LlmStreamResult {
+                                full_content,
+                                usage,
+                            });
                         }
 
                         match provider.parse_stream_data(data) {
@@ -268,16 +310,21 @@ impl LlmClient {
                                     } else {
                                         &tool.input_json
                                     };
-                                    let input =
-                                        serde_json::from_str(raw).map_err(|e| {
-                                            format!("Failed to parse tool input JSON: {}", e)
-                                        })?;
+                                    let input = serde_json::from_str(raw).map_err(|e| {
+                                        format!("Failed to parse tool input JSON: {}", e)
+                                    })?;
                                     on_tool_call(ToolCall {
                                         id: tool.id,
                                         name: tool.name,
                                         input,
                                     });
                                 }
+                            }
+                            Ok(Some(ParseResult::Usage {
+                                input_tokens,
+                                output_tokens,
+                            })) => {
+                                usage.apply_delta(input_tokens, output_tokens);
                             }
                             Ok(None) => {}
                             Err(error) => {
@@ -290,6 +337,9 @@ impl LlmClient {
             }
         }
 
-        Ok(full_content)
+        Ok(LlmStreamResult {
+            full_content,
+            usage,
+        })
     }
 }

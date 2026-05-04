@@ -137,9 +137,27 @@ const CopyButton = styled.button`
 
 interface MarkdownRendererProps {
   content: string;
+  isStreaming?: boolean;
 }
 
-export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
+const PlainCodeBlock = styled.pre`
+  margin: 0;
+  padding: ${({ theme }) => theme.spacing.md};
+  overflow: auto;
+  background-color: ${({ theme }) => theme.colors.codeBg};
+  color: ${({ theme }) => theme.colors.textPrimary};
+  font-size: 13px;
+  line-height: 1.5;
+
+  code {
+    font-family: ${({ theme }) => theme.typography.fontFamilyMono};
+  }
+`;
+
+const MarkdownRendererComponent: React.FC<MarkdownRendererProps> = ({
+  content,
+  isStreaming = false,
+}) => {
   return (
     <MarkdownContainer>
       <ReactMarkdown
@@ -155,7 +173,11 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
             }
 
             return (
-              <CodeBlock language={match?.[1] ?? 'text'} code={codeString} />
+              <CodeBlock
+                language={match?.[1] ?? 'text'}
+                code={codeString}
+                isStreaming={isStreaming}
+              />
             );
           },
         }}
@@ -166,9 +188,18 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
   );
 };
 
+export const MarkdownRenderer = React.memo(
+  MarkdownRendererComponent,
+  (prev, next) => prev.content === next.content && prev.isStreaming === next.isStreaming,
+);
+
 // ─── Code Block Sub-component ───────────────────────────────
 
-const CodeBlock: React.FC<{ language: string; code: string }> = ({ language, code }) => {
+const CodeBlock: React.FC<{
+  language: string;
+  code: string;
+  isStreaming: boolean;
+}> = React.memo(({ language, code, isStreaming }) => {
   const [copied, setCopied] = React.useState(false);
 
   const handleCopy = useCallback(() => {
@@ -186,19 +217,25 @@ const CodeBlock: React.FC<{ language: string; code: string }> = ({ language, cod
           {copied ? messages.messages.code.copied : messages.messages.code.copy}
         </CopyButton>
       </CodeHeader>
-      <SyntaxHighlighter
-        language={language}
-        style={oneDark}
-        customStyle={{
-          margin: 0,
-          borderRadius: 0,
-          fontSize: '13px',
-          lineHeight: '1.5',
-        }}
-        showLineNumbers={false}
-      >
-        {code}
-      </SyntaxHighlighter>
+      {isStreaming ? (
+        <PlainCodeBlock>
+          <code>{code}</code>
+        </PlainCodeBlock>
+      ) : (
+        <SyntaxHighlighter
+          language={language}
+          style={oneDark}
+          customStyle={{
+            margin: 0,
+            borderRadius: 0,
+            fontSize: '13px',
+            lineHeight: '1.5',
+          }}
+          showLineNumbers={false}
+        >
+          {code}
+        </SyntaxHighlighter>
+      )}
     </CodeBlockWrapper>
   );
-};
+});

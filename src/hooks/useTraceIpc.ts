@@ -1,15 +1,18 @@
 import { useEffect } from 'react';
 import {
+  emitTraceWindowReady,
   onAgentComplete,
   onAgentTurn,
   onStreamDelta,
   onThinkingDelta,
   onTraceConversationChanged,
   onTracePrompt,
+  onTraceSyncConversations,
   onTraceThinkingEnd,
   onTraceThinkingStart,
 } from '@/hooks/useIpc';
 import { useTraceStore } from '@/stores/traceStore';
+import { useChatStore } from '@/stores/chatStore';
 
 const TRACE_FLUSH_INTERVAL_MS = 50;
 
@@ -62,6 +65,10 @@ export function useTraceIpc() {
     const install = async () => {
       cleanup = await Promise.all([
         onTraceConversationChanged((event) => useTraceStore.getState().reset(event.conversationId)),
+        onTraceSyncConversations((event) => {
+          // Replace trace window's chatStore conversations with main window's data
+          useChatStore.setState({ conversations: event.conversations });
+        }),
         onAgentTurn((event) => useTraceStore.getState().startTurn(event)),
         onTracePrompt((event) => useTraceStore.getState().addPrompt(event)),
         onTraceThinkingStart((event) => useTraceStore.getState().startThinking(event)),
@@ -87,9 +94,29 @@ export function useTraceIpc() {
       }
     };
 
-    install().catch(() => {
-      cleanup = [];
-    });
+    install()
+      .then(() => {
+        if (disposed) return;
+        // After all listeners are installed, sync initial conversationId
+        const currentId = useTraceStore.getState().conversationId;
+
+        // Try reading from URL parameter (set by Rust when creating fresh window)
+        if (!currentId) {
+          const params = new URLSearchParams(window.location.search);
+          const urlConversationId = params.get('conversationId');
+          if (urlConversationId) {
+            useTraceStore.getState().reset(urlConversationId);
+          }
+        }
+
+        // Always request full state sync from main window — the trace window
+        // has its own localStorage (Tauri per-webview storage), so we need the
+        // main window to send the actual conversations data.
+        emitTraceWindowReady().catch(() => {});
+      })
+      .catch(() => {
+        cleanup = [];
+      });
 
     return () => {
       disposed = true;

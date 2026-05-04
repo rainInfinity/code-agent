@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { AgentMode, Message, Conversation } from '@/types';
+import type { AgentMode, Message, Conversation, TurnTrace } from '@/types';
 import { messages as appMessages } from '@/i18n';
 
 function generateId(): string {
@@ -28,6 +28,12 @@ interface ChatState {
   getFilteredConversations: () => Conversation[];
   setSelectedWorkDir: (path: string | null) => void;
   setConversationTraceEnabled: (conversationId: string, traceEnabled: boolean) => void;
+  appendTurn: (conversationId: string, turn: TurnTrace) => void;
+  updateLatestTurn: (
+    conversationId: string,
+    updater: (turn: TurnTrace) => TurnTrace,
+  ) => void;
+  clearConversationTurns: (conversationId: string) => void;
 
   // Message actions
   addMessage: (conversationId: string, message: Omit<Message, 'id' | 'timestamp'>) => string;
@@ -37,12 +43,17 @@ interface ChatState {
 
   // Streaming state
   setStreaming: (isStreaming: boolean, messageId?: string | null) => void;
+
+  // Trace pin state
+  isTracePinned: boolean;
+  setTracePinned: (isPinned: boolean) => void;
 }
 
 function normalizePersistedConversations(conversations: Conversation[]): Conversation[] {
   return conversations.map((conversation) => ({
     ...conversation,
     traceEnabled: conversation.traceEnabled ?? false,
+    turns: conversation.turns ?? [],
     messages: conversation.messages.map((message) =>
       message.status === 'streaming' || message.status === 'pending'
         ? {
@@ -70,6 +81,7 @@ export const useChatStore = create<ChatState>()(
           id,
           title: appMessages.conversations.newConversation,
           messages: [],
+          turns: [],
           createdAt: Date.now(),
           updatedAt: Date.now(),
           workDir,
@@ -122,6 +134,54 @@ export const useChatStore = create<ChatState>()(
               ? {
                   ...conversation,
                   traceEnabled,
+                  updatedAt: Date.now(),
+                }
+              : conversation,
+          ),
+        })),
+
+      appendTurn: (conversationId: string, turn: TurnTrace) =>
+        set((state) => ({
+          conversations: state.conversations.map((conversation) =>
+            conversation.id === conversationId
+              ? {
+                  ...conversation,
+                  turns: [...(conversation.turns ?? []), turn],
+                  updatedAt: Date.now(),
+                }
+              : conversation,
+          ),
+        })),
+
+      updateLatestTurn: (
+        conversationId: string,
+        updater: (turn: TurnTrace) => TurnTrace,
+      ) =>
+        set((state) => ({
+          conversations: state.conversations.map((conversation) => {
+            if (conversation.id !== conversationId) return conversation;
+
+            const turns = conversation.turns ?? [];
+            const turnIndex = turns.length - 1;
+            if (turnIndex < 0) return conversation;
+
+            return {
+              ...conversation,
+              turns: turns.map((turn, index) =>
+                index === turnIndex ? updater(turn) : turn,
+              ),
+              updatedAt: Date.now(),
+            };
+          }),
+        })),
+
+      clearConversationTurns: (conversationId: string) =>
+        set((state) => ({
+          conversations: state.conversations.map((conversation) =>
+            conversation.id === conversationId
+              ? {
+                  ...conversation,
+                  turns: [],
                   updatedAt: Date.now(),
                 }
               : conversation,
@@ -231,12 +291,21 @@ export const useChatStore = create<ChatState>()(
 
       setStreaming: (isStreaming: boolean, messageId: string | null = null) =>
         set({ isStreaming, streamingMessageId: messageId }),
+
+      isTracePinned: false,
+
+      setTracePinned: (isPinned: boolean) => set({ isTracePinned: isPinned }),
     }),
     {
-      name: 'code-agent-chat-history',
+      // Trace window uses a separate persist key to avoid overwriting
+      // the main window's conversations in shared localStorage.
+      name: typeof window !== 'undefined' && window.location.search.includes('window=trace')
+        ? 'code-agent-trace-chat-history'
+        : 'code-agent-chat-history',
       partialize: (state) => ({
         conversations: normalizePersistedConversations(state.conversations),
         activeConversationId: state.activeConversationId,
+        isTracePinned: state.isTracePinned,
       }),
       merge: (persisted, current) => {
         const saved = persisted as Partial<ChatState>;
@@ -253,6 +322,7 @@ export const useChatStore = create<ChatState>()(
           activeConversationId,
           isStreaming: false,
           streamingMessageId: null,
+          isTracePinned: saved.isTracePinned ?? false,
         };
       },
     },

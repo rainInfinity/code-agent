@@ -2,6 +2,8 @@ import type React from 'react';
 import styled from 'styled-components';
 import { messages } from '@/i18n';
 import type { TurnTrace } from '@/types';
+import { TraceCopyButton } from './TraceCopyButton';
+import { useCopyFeedback } from './useCopyFeedback';
 
 const Section = styled.section`
   border-top: 1px solid ${({ theme }) => theme.colors.borderSubtle};
@@ -10,6 +12,10 @@ const Section = styled.section`
 `;
 
 const Header = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: ${({ theme }) => theme.spacing.sm};
   font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
 `;
 
@@ -29,11 +35,21 @@ const Content = styled.pre`
 `;
 
 export const ResponseView: React.FC<{ response: TurnTrace['response'] }> = ({ response }) => {
+  const { copyTone, copyText } = useCopyFeedback();
   if (!response.content) return null;
 
   return (
     <Section>
-      <Header>{messages.trace.response}</Header>
+      <Header>
+        <span>{messages.trace.response}</span>
+        <TraceCopyButton
+          tone={copyTone}
+          idleLabel={messages.trace.copyResponse}
+          onClick={() => {
+            void copyText(response.content);
+          }}
+        />
+      </Header>
       <Content>{response.content}</Content>
     </Section>
   );

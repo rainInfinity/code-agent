@@ -24,6 +24,83 @@ type AgentListenerRegistry = {
 
 const agentListenerRegistryKey = '__codeAgentListeners__';
 
+type BufferedDelta = {
+  conversationId: string;
+  messageId: string;
+  delta: string;
+  frameId: number | null;
+};
+
+type DeltaBuffer = Map<string, BufferedDelta>;
+
+const getBufferKey = (conversationId: string, messageId: string) =>
+  `${conversationId}:${messageId}`;
+
+const requestFrame = (callback: FrameRequestCallback) => {
+  if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+    return window.requestAnimationFrame(callback);
+  }
+
+  return window.setTimeout(() => callback(performance.now()), 16);
+};
+
+const cancelFrame = (frameId: number) => {
+  if (typeof window !== 'undefined' && window.cancelAnimationFrame) {
+    window.cancelAnimationFrame(frameId);
+    return;
+  }
+
+  window.clearTimeout(frameId);
+};
+
+function flushBufferedDelta(
+  buffer: DeltaBuffer,
+  conversationId: string,
+  messageId: string,
+  append: (conversationId: string, messageId: string, delta: string) => void,
+) {
+  const key = getBufferKey(conversationId, messageId);
+  const entry = buffer.get(key);
+  if (!entry || !entry.delta) return;
+
+  if (entry.frameId !== null) {
+    cancelFrame(entry.frameId);
+  }
+
+  buffer.delete(key);
+  append(entry.conversationId, entry.messageId, entry.delta);
+}
+
+function appendBufferedDelta(
+  buffer: DeltaBuffer,
+  conversationId: string,
+  messageId: string,
+  delta: string,
+  append: (conversationId: string, messageId: string, delta: string) => void,
+) {
+  const key = getBufferKey(conversationId, messageId);
+  const current = buffer.get(key) ?? {
+    conversationId,
+    messageId,
+    delta: '',
+    frameId: null,
+  };
+
+  current.delta += delta;
+
+  if (current.frameId === null) {
+    current.frameId = requestFrame(() => {
+      const queued = buffer.get(key);
+      if (queued) {
+        queued.frameId = null;
+      }
+      flushBufferedDelta(buffer, conversationId, messageId, append);
+    });
+  }
+
+  buffer.set(key, current);
+}
+
 function getAgentListenerRegistry(): AgentListenerRegistry {
   const target = globalThis as typeof globalThis & {
     [agentListenerRegistryKey]?: AgentListenerRegistry;
@@ -43,27 +120,71 @@ function ensureAgentListeners() {
   const registry = getAgentListenerRegistry();
   if (registry.installed) return;
   registry.installed = true;
+  const streamDeltaBuffer: DeltaBuffer = new Map();
+  const thinkingDeltaBuffer: DeltaBuffer = new Map();
 
   const install = async () => {
     const unlisteners = await Promise.all([
       onStreamDelta((event) => {
-        useChatStore.getState().appendToMessage(event.conversationId, event.messageId, event.delta);
+        appendBufferedDelta(
+          streamDeltaBuffer,
+          event.conversationId,
+          event.messageId,
+          event.delta,
+          (conversationId, messageId, delta) => {
+            useChatStore.getState().appendToMessage(conversationId, messageId, delta);
+          },
+        );
       }),
       onThinkingDelta((event) => {
-        useChatStore
-          .getState()
-          .appendThinkingToMessage(event.conversationId, event.messageId, event.delta);
+        appendBufferedDelta(
+          thinkingDeltaBuffer,
+          event.conversationId,
+          event.messageId,
+          event.delta,
+          (conversationId, messageId, delta) => {
+            useChatStore.getState().appendThinkingToMessage(conversationId, messageId, delta);
+          },
+        );
       }),
       onStreamEnd((event) => {
         const { updateMessage, setStreaming } = useChatStore.getState();
+        flushBufferedDelta(
+          streamDeltaBuffer,
+          event.conversationId,
+          event.messageId,
+          useChatStore.getState().appendToMessage,
+        );
+        flushBufferedDelta(
+          thinkingDeltaBuffer,
+          event.conversationId,
+          event.messageId,
+          useChatStore.getState().appendThinkingToMessage,
+        );
         updateMessage(event.conversationId, event.messageId, {
           content: event.fullContent,
           status: 'complete',
+          usage: {
+            inputTokens: event.inputTokens,
+            outputTokens: event.outputTokens,
+          },
         });
         setStreaming(false);
       }),
       onStreamError((event) => {
         const { updateMessage, setStreaming } = useChatStore.getState();
+        flushBufferedDelta(
+          streamDeltaBuffer,
+          event.conversationId,
+          event.messageId,
+          useChatStore.getState().appendToMessage,
+        );
+        flushBufferedDelta(
+          thinkingDeltaBuffer,
+          event.conversationId,
+          event.messageId,
+          useChatStore.getState().appendThinkingToMessage,
+        );
         updateMessage(event.conversationId, event.messageId, {
           content: event.error,
           status: 'error',
@@ -124,6 +245,10 @@ function ensureAgentListeners() {
         updateMessage(event.conversationId, event.messageId, {
           ...(isError ? { content: event.reason } : {}),
           status: isError ? 'error' : 'complete',
+          usage: {
+            inputTokens: event.inputTokens,
+            outputTokens: event.outputTokens,
+          },
         });
         setStreaming(false);
         useAgentStore.getState().reset();

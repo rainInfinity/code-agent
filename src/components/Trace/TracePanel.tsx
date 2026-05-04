@@ -2,15 +2,20 @@ import React, { useEffect, useMemo, useState } from 'react';
 import styled from 'styled-components';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
+  FaThumbtack,
+  FaArrowUp,
+  FaTrash,
   FaRegWindowMaximize,
   FaRegWindowMinimize,
   FaRegWindowRestore,
   FaXmark,
 } from 'react-icons/fa6';
 import { messages } from '@/i18n';
-import { hideTraceWindow } from '@/hooks/useIpc';
+import { emitTracePinChanged, hideTraceWindow, setTraceAlwaysOnTop } from '@/hooks/useIpc';
 import { useTraceIpc } from '@/hooks/useTraceIpc';
+import { useChatStore } from '@/stores/chatStore';
 import { useTraceStore } from '@/stores/traceStore';
+import type { TurnTrace } from '@/types';
 import { TraceStatusBar } from './TraceStatusBar';
 import { TurnCard } from './TurnCard';
 
@@ -54,14 +59,19 @@ const WindowControls = styled.div`
   flex-shrink: 0;
 `;
 
-const WindowButton = styled.button<{ $danger?: boolean }>`
+const WindowButton = styled.button<{ $danger?: boolean; $active?: boolean }>`
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 42px;
   height: 100%;
-  color: ${({ theme }) => theme.colors.textSecondary};
+  border-left: 1px solid
+    ${({ $active, theme }) => ($active ? theme.colors.accentPrimary : 'transparent')};
+  color: ${({ $active, theme }) =>
+    $active ? theme.colors.accentPrimaryHover : theme.colors.textSecondary};
+  background: ${({ $active, theme }) => ($active ? theme.colors.bgActive : 'transparent')};
   transition: background-color ${({ theme }) => theme.transitions.fast},
+    border-color ${({ theme }) => theme.transitions.fast},
     color ${({ theme }) => theme.transitions.fast};
 
   &:hover {
@@ -73,6 +83,11 @@ const WindowButton = styled.button<{ $danger?: boolean }>`
   &:focus-visible {
     outline: 2px solid ${({ theme }) => theme.colors.inputBorderFocus};
     outline-offset: -2px;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.45;
   }
 `;
 
@@ -92,9 +107,19 @@ const EmptyState = styled.div`
   font-size: ${({ theme }) => theme.typography.fontSize.sm};
 `;
 
+const EMPTY_TURNS: TurnTrace[] = [];
+
 export const TracePanel: React.FC = () => {
   useTraceIpc();
-  const turns = useTraceStore((state) => state.turns);
+  const conversationId = useTraceStore((state) => state.conversationId);
+  const isPinned = useChatStore((state) => state.isTracePinned);
+  const setPinned = useTraceStore((state) => state.setPinned);
+  const alwaysOnTop = useTraceStore((state) => state.alwaysOnTop);
+  const setAlwaysOnTop = useTraceStore((state) => state.setAlwaysOnTop);
+  const clearTurns = useTraceStore((state) => state.clearTurns);
+  const turns = useChatStore((state) =>
+    state.conversations.find((conversation) => conversation.id === conversationId)?.turns ?? EMPTY_TURNS,
+  );
   const window = useMemo(() => getCurrentWindow(), []);
   const [isMaximized, setIsMaximized] = useState(false);
 
@@ -143,6 +168,23 @@ export const TracePanel: React.FC = () => {
     event.stopPropagation();
   };
 
+  const togglePinned = () => {
+    const nextPinned = !isPinned;
+    setPinned(nextPinned);
+    emitTracePinChanged(nextPinned).catch(() => {});
+  };
+
+  const toggleAlwaysOnTop = () => {
+    const next = !alwaysOnTop;
+    setAlwaysOnTop(next);
+    setTraceAlwaysOnTop(next).catch(() => {});
+  };
+
+  const clearCurrentTurns = () => {
+    if (!conversationId) return;
+    clearTurns(conversationId);
+  };
+
   return (
     <Panel>
       <Header>
@@ -150,6 +192,35 @@ export const TracePanel: React.FC = () => {
           <Title>{messages.trace.title}</Title>
         </DragSurface>
         <WindowControls onMouseDown={stopDrag} onDoubleClick={stopDrag}>
+          <WindowButton
+            type="button"
+            $active={isPinned}
+            title={messages.trace.pinTooltip}
+            aria-label={messages.trace.pinTooltip}
+            aria-pressed={isPinned}
+            onClick={togglePinned}
+          >
+            <FaThumbtack size={13} />
+          </WindowButton>
+          <WindowButton
+            type="button"
+            $active={alwaysOnTop}
+            title={messages.trace.alwaysOnTopTooltip}
+            aria-label={messages.trace.alwaysOnTopTooltip}
+            aria-pressed={alwaysOnTop}
+            onClick={toggleAlwaysOnTop}
+          >
+            <FaArrowUp size={13} />
+          </WindowButton>
+          <WindowButton
+            type="button"
+            disabled={!conversationId || turns.length === 0}
+            title={messages.trace.clearTraceTooltip}
+            aria-label={messages.trace.clearTraceTooltip}
+            onClick={clearCurrentTurns}
+          >
+            <FaTrash size={12} />
+          </WindowButton>
           <WindowButton
             type="button"
             title={messages.trace.minimizeTrace}

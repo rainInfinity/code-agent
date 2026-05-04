@@ -28,6 +28,7 @@ export interface Message {
   contentBlocks?: ContentBlock[];
   status: MessageStatus;
   timestamp: number;
+  usage?: TokenUsage;
   thinkingContent?: string;
   thinkingStartedAt?: number;
   toolCalls?: ToolCall[];
@@ -44,6 +45,7 @@ export interface Conversation {
   id: string;
   title: string;
   messages: Message[];
+  turns: TurnTrace[];
   createdAt: number;
   updatedAt: number;
   /** Working directory path — set when created in code mode */
@@ -106,6 +108,8 @@ export interface ChatState {
   conversations: Conversation[];
   activeConversationId: string | null;
   isStreaming: boolean;
+  isTracePinned: boolean;
+  setTracePinned: (isPinned: boolean) => void;
 }
 
 /** LLM stream event payload from Rust backend */
@@ -127,6 +131,8 @@ export interface StreamEndEvent {
   conversationId: string;
   messageId: string;
   fullContent: string;
+  inputTokens: number;
+  outputTokens: number;
 }
 
 /** Stream error event payload */
@@ -203,11 +209,31 @@ export interface TurnTrace {
     startTime?: number;
     endTime?: number;
   };
+  usage?: TokenUsage;
 }
 
 export interface ConversationTrace {
   conversationId: string | null;
   turns: TurnTrace[];
+}
+
+export interface TraceState {
+  conversationId: string | null;
+  sessionId: string | null;
+  isPinned: boolean;
+  alwaysOnTop: boolean;
+  agentStatus: 'idle' | 'running' | 'complete' | 'error';
+  setPinned: (isPinned: boolean) => void;
+  setAlwaysOnTop: (alwaysOnTop: boolean) => void;
+  startTurn: (event: AgentTurnEvent) => void;
+  addPrompt: (event: TracePromptEvent) => void;
+  startThinking: (event: TraceThinkingEvent) => void;
+  endThinking: (event: TraceThinkingEvent) => void;
+  appendThinking: (event: StreamThinkingEvent) => void;
+  appendResponse: (event: StreamEvent) => void;
+  endTurn: (event: AgentCompleteEvent) => void;
+  reset: (conversationId?: string | null) => void;
+  clearTurns: (conversationId: string) => void;
 }
 
 export interface AgentTurnEvent {
@@ -222,4 +248,11 @@ export interface AgentCompleteEvent {
   messageId: string;
   status: AgentStatus;
   reason: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
 }

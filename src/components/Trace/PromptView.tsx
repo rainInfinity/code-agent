@@ -4,6 +4,8 @@ import styled from 'styled-components';
 import { FaChevronDown, FaChevronRight } from 'react-icons/fa6';
 import { messages } from '@/i18n';
 import type { TurnTrace } from '@/types';
+import { TraceCopyButton } from './TraceCopyButton';
+import { useCopyFeedback } from './useCopyFeedback';
 
 type Prompt = TurnTrace['prompt'];
 
@@ -16,9 +18,18 @@ const Section = styled.section`
   }
 `;
 
-const Toggle = styled.button`
+const Header = styled.div`
   display: flex;
   width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: ${({ theme }) => theme.spacing.sm};
+`;
+
+const Toggle = styled.button`
+  display: flex;
+  flex: 1;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: ${({ theme }) => theme.spacing.sm};
@@ -79,19 +90,33 @@ const MessageItem = styled.details`
 
 export const PromptView: React.FC<{ prompt: Prompt }> = ({ prompt }) => {
   const [expanded, setExpanded] = useState(false);
+  const { copyTone, copyText } = useCopyFeedback();
   if (!prompt) return null;
 
   const Chevron = expanded ? FaChevronDown : FaChevronRight;
+  const promptText = [
+    `system: ${prompt.systemPrompt}`,
+    ...prompt.messages.map((message) => `${message.role}: ${message.content}`),
+  ].join('\n\n');
 
   return (
     <Section>
-      <Toggle type="button" onClick={() => setExpanded((value) => !value)}>
-        <Label>
-          <Chevron />
-          {messages.trace.prompt}
-        </Label>
-        <Summary>{messages.trace.messageCount(prompt.messages.length)}</Summary>
-      </Toggle>
+      <Header>
+        <Toggle type="button" onClick={() => setExpanded((value) => !value)}>
+          <Label>
+            <Chevron />
+            {messages.trace.prompt}
+          </Label>
+          <Summary>{messages.trace.messageCount(prompt.messages.length)}</Summary>
+        </Toggle>
+        <TraceCopyButton
+          tone={copyTone}
+          idleLabel={messages.trace.copyPrompt}
+          onClick={() => {
+            void copyText(promptText);
+          }}
+        />
+      </Header>
       {expanded && (
         <>
           <Block>{prompt.systemPrompt}</Block>

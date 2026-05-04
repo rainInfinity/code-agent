@@ -1,15 +1,58 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import styled, { keyframes } from "styled-components";
 import { FaCheck, FaChevronDown, FaCopy, FaRobot, FaUser, FaXmark } from "react-icons/fa6";
 import { useChatStore } from "@/stores/chatStore";
 import { Row, Column } from "@/components/common/Flex";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { messages as appMessages } from "@/i18n";
-import type { Message } from "@/types";
+import type { Message, MessageRole, MessageStatus } from "@/types";
 
 const DISENGAGE_AUTO_FOLLOW_PX = 150;
 const REENGAGE_AUTO_FOLLOW_PX = 50;
 const BUTTON_SMOOTH_SCROLL_MS = 700;
+const MESSAGE_META_SEPARATOR = "\u001f";
+
+type MessageMeta = {
+  id: string;
+  role: MessageRole;
+  status: MessageStatus;
+};
+
+const encodeMessageMeta = (message: MessageMeta) =>
+  [message.id, message.role, message.status].join(MESSAGE_META_SEPARATOR);
+
+const decodeMessageMeta = (value: string): MessageMeta => {
+  const [id, role, status] = value.split(MESSAGE_META_SEPARATOR);
+  return {
+    id,
+    role: role as MessageRole,
+    status: status as MessageStatus,
+  };
+};
+
+const getStreamingScrollSignature = (
+  state: ReturnType<typeof useChatStore.getState>,
+  conversationId: string | null,
+) => {
+  if (!conversationId) return "";
+
+  const conversation = state.conversations.find((item) => item.id === conversationId);
+  const messages = conversation?.messages ?? [];
+  const streamingMessage = messages.find((message) => message.status === "streaming");
+  if (!streamingMessage) {
+    const lastMessage = messages[messages.length - 1];
+    return lastMessage ? `completed:${lastMessage.id}` : "";
+  }
+
+  return [
+    streamingMessage.id,
+    streamingMessage.content.length,
+    streamingMessage.thinkingContent?.length ?? 0,
+    streamingMessage.toolCalls?.length ?? 0,
+    streamingMessage.toolResults?.length ?? 0,
+  ].join(MESSAGE_META_SEPARATOR);
+};
 
 const ListShell = styled.div`
   flex: 1;
@@ -363,17 +406,6 @@ const ToolIndicator = styled.div`
   font-size: ${({ theme }) => theme.typography.fontSize.sm};
 `;
 
-const makeStreamingMarkdownRenderable = (content: string) => {
-  const fenceMatches = content.match(/(^|\n)\s*(```|~~~)/g) ?? [];
-  if (fenceMatches.length % 2 === 1) {
-    const lastFence = fenceMatches[fenceMatches.length - 1];
-    const fence = lastFence.includes("~~~") ? "~~~" : "```";
-    return `${content}\n${fence}`;
-  }
-
-  return content;
-};
-
 const formatThinkingDuration = (durationMs: number) => {
   if (durationMs < 1000) {
     return appMessages.messages.durationMs(Math.max(0, Math.round(durationMs)));
@@ -392,8 +424,7 @@ const formatThinkingDuration = (durationMs: number) => {
 
 const ThinkingPanel: React.FC<{ message: Message }> = ({ message }) => {
   const bodyRef = useRef<HTMLPreElement>(null);
-  const hasAutoCollapsedRef = useRef(Boolean(message.content));
-  const [isOpen, setIsOpen] = useState(!message.content);
+  const [isOpen, setIsOpen] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(() =>
     message.thinkingStartedAt ? Date.now() - message.thinkingStartedAt : 0,
   );
@@ -426,13 +457,6 @@ const ThinkingPanel: React.FC<{ message: Message }> = ({ message }) => {
     const timer = window.setInterval(updateElapsed, 100);
     return () => window.clearInterval(timer);
   }, [isThinking, message.id, message.thinkingStartedAt]);
-
-  useEffect(() => {
-    if (message.content && !hasAutoCollapsedRef.current) {
-      setIsOpen(false);
-      hasAutoCollapsedRef.current = true;
-    }
-  }, [message.content]);
 
   return (
     <ThinkingPanelShell $isThinking={isThinking}>
@@ -493,9 +517,7 @@ const MessageBodyContent: React.FC<{ message: Message }> = ({ message }) => {
         <ThinkingPanel message={message} />
       ) : null}
       {content ? (
-        <MarkdownRenderer
-          content={status === "streaming" ? makeStreamingMarkdownRenderable(content) : content}
-        />
+        <MarkdownRenderer content={content} isStreaming={status === "streaming"} />
       ) : null}
       {toolCalls?.map((toolCall) => (
         <ToolIndicator key={toolCall.id}>Running {toolCall.name}...</ToolIndicator>
@@ -512,6 +534,73 @@ const MessageBodyContent: React.FC<{ message: Message }> = ({ message }) => {
   );
 };
 
+type MessageItemProps = {
+  conversationId: string;
+  messageId: string;
+  role: MessageRole;
+  copyTone: "idle" | "success" | "error";
+  onCopyMessage: (messageId: string, content: string) => void;
+};
+
+const MessageItem: React.FC<MessageItemProps> = React.memo(({
+  conversationId,
+  messageId,
+  role,
+  copyTone,
+  onCopyMessage,
+}) => {
+  const message = useChatStore((state) =>
+    state.conversations
+      .find((conversation) => conversation.id === conversationId)
+      ?.messages.find((item) => item.id === messageId),
+  );
+
+  if (!message) return null;
+
+  const copyLabel =
+    copyTone === "success"
+      ? appMessages.messages.copy.success
+      : copyTone === "error"
+        ? appMessages.messages.copy.error
+        : appMessages.messages.copy.idle;
+
+  return (
+    <MessageWrapper $role={role} $align="flex-start" $gap="md">
+      <Avatar $role={role}>
+        {role === "user" ? <FaUser size={14} /> : <FaRobot size={14} />}
+      </Avatar>
+      <MessageContent $role={role}>
+        <RoleName>
+          {role === "user"
+            ? appMessages.messages.roles.user
+            : appMessages.messages.roles.assistant}
+        </RoleName>
+        <MessageBody>
+          <MessageBodyContent message={message} />
+        </MessageBody>
+        <MessageActions $role={role}>
+          <CopyButton
+            type="button"
+            $tone={copyTone}
+            onClick={() => onCopyMessage(message.id, message.content)}
+            title={copyLabel}
+            aria-label={copyLabel}
+          >
+            {copyTone === "success" ? (
+              <FaCheck size={12} />
+            ) : copyTone === "error" ? (
+              <FaXmark size={12} />
+            ) : (
+              <FaCopy size={12} />
+            )}
+            <span>{copyLabel}</span>
+          </CopyButton>
+        </MessageActions>
+      </MessageContent>
+    </MessageWrapper>
+  );
+});
+
 interface MessageListProps {
   conversationId?: string;
 }
@@ -522,30 +611,39 @@ export const MessageList: React.FC<MessageListProps> = ({ conversationId }) => {
   const autoFollowRef = useRef(true);
   const smoothScrollUntilRef = useRef(0);
   const smoothScrollTimeoutRef = useRef<number | null>(null);
+  const scrollFrameRef = useRef<number | null>(null);
+  const needsFollowUpScrollRef = useRef(false);
+  const wasStreamingRef = useRef(false);
   const previousConversationIdRef = useRef<string | null>(null);
   const previousLastMessageIdRef = useRef<string | null>(null);
   const [copyState, setCopyState] = useState<Record<string, "success" | "error">>({});
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  const { conversations, activeConversationId } = useChatStore();
-
-  const conversation = conversations.find((c) => c.id === (conversationId ?? activeConversationId));
-  const messages = conversation?.messages ?? [];
-  const isStreaming = messages.some((message) => message.status === "streaming");
-  const lastMessage = messages[messages.length - 1];
+  const activeConversationId = useChatStore((state) => state.activeConversationId);
+  const targetConversationId = conversationId ?? activeConversationId;
+  const messageMetaKeys = useChatStore(
+    useShallow((state) => {
+      const conversation = state.conversations.find((item) => item.id === targetConversationId);
+      return conversation?.messages.map((message) => encodeMessageMeta(message)) ?? [];
+    }),
+  );
+  const messageMeta = messageMetaKeys.map(decodeMessageMeta);
+  const messageCount = messageMeta.length;
+  const isStreaming = messageMeta.some((message) => message.status === "streaming");
+  const lastMessage = messageMeta[messageMeta.length - 1];
 
   const getDistanceFromBottom = useCallback((el: HTMLDivElement) => {
     return Math.max(0, el.scrollHeight - el.scrollTop - el.clientHeight);
   }, []);
 
   const scrollToBottomInstant = useCallback((force = false) => {
-    if (!force && Date.now() < smoothScrollUntilRef.current) {
+    if (!force && !isStreaming && Date.now() < smoothScrollUntilRef.current) {
       return;
     }
 
     const el = listRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, []);
+  }, [isStreaming]);
 
   const updateScrollAffordance = useCallback(() => {
     const el = listRef.current;
@@ -564,8 +662,8 @@ export const MessageList: React.FC<MessageListProps> = ({ conversationId }) => {
       autoFollowRef.current = true;
     }
 
-    setShowScrollToBottom(messages.length > 0 && !autoFollowRef.current);
-  }, [getDistanceFromBottom, messages.length]);
+    setShowScrollToBottom(messageCount > 0 && !autoFollowRef.current);
+  }, [getDistanceFromBottom, messageCount]);
 
   const copyMessage = useCallback(async (messageId: string, content: string) => {
     try {
@@ -605,7 +703,7 @@ export const MessageList: React.FC<MessageListProps> = ({ conversationId }) => {
   }, [scrollToBottomInstant, updateScrollAffordance]);
 
   useEffect(() => {
-    const conversationChanged = previousConversationIdRef.current !== activeConversationId;
+    const conversationChanged = previousConversationIdRef.current !== targetConversationId;
     const lastMessageChanged = previousLastMessageIdRef.current !== (lastMessage?.id ?? null);
     const userSentMessage = lastMessageChanged && lastMessage?.role === "user";
 
@@ -615,46 +713,91 @@ export const MessageList: React.FC<MessageListProps> = ({ conversationId }) => {
       setShowScrollToBottom(false);
     }
 
-    previousConversationIdRef.current = activeConversationId ?? null;
+    previousConversationIdRef.current = targetConversationId ?? null;
     previousLastMessageIdRef.current = lastMessage?.id ?? null;
   }, [
-    activeConversationId,
+    targetConversationId,
     lastMessage?.id,
     lastMessage?.role,
     scrollToBottomInstant,
   ]);
+
+  const syncScrollInFrame = useCallback((force = false) => {
+    if (scrollFrameRef.current !== null) {
+      needsFollowUpScrollRef.current = true;
+      return;
+    }
+
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      if (force || autoFollowRef.current) {
+        const previousHeight = listRef.current?.scrollHeight ?? 0;
+        scrollToBottomInstant(force);
+        const nextHeight = listRef.current?.scrollHeight ?? 0;
+        if (nextHeight !== previousHeight) {
+          scrollToBottomInstant(true);
+        }
+      }
+      if (needsFollowUpScrollRef.current) {
+        needsFollowUpScrollRef.current = false;
+        syncScrollInFrame();
+      }
+      updateScrollAffordance();
+    });
+  }, [scrollToBottomInstant, updateScrollAffordance]);
 
   useEffect(() => {
     const contentEl = contentRef.current;
     if (!contentEl) return;
 
     const observer = new ResizeObserver(() => {
-      if (autoFollowRef.current) {
-        scrollToBottomInstant();
-      }
-      updateScrollAffordance();
+      syncScrollInFrame();
     });
 
     observer.observe(contentEl);
     return () => observer.disconnect();
-  }, [scrollToBottomInstant, updateScrollAffordance]);
+  }, [syncScrollInFrame]);
+
+  useEffect(() => {
+    let previousSignature = getStreamingScrollSignature(
+      useChatStore.getState(),
+      targetConversationId,
+    );
+
+    return useChatStore.subscribe((state) => {
+      const nextSignature = getStreamingScrollSignature(state, targetConversationId);
+      if (nextSignature && nextSignature !== previousSignature) {
+        syncScrollInFrame();
+      }
+      previousSignature = nextSignature;
+    });
+  }, [targetConversationId, syncScrollInFrame]);
 
   useEffect(() => {
     return () => {
       if (smoothScrollTimeoutRef.current !== null) {
         window.clearTimeout(smoothScrollTimeoutRef.current);
       }
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+      }
+      needsFollowUpScrollRef.current = false;
     };
   }, []);
 
   useEffect(() => {
-    if (autoFollowRef.current && isStreaming) {
-      scrollToBottomInstant();
+    if (wasStreamingRef.current && !isStreaming) {
+      const timeout = window.setTimeout(() => {
+        syncScrollInFrame(true);
+      }, 50);
+      wasStreamingRef.current = false;
+      return () => window.clearTimeout(timeout);
     }
-    updateScrollAffordance();
-  }, [isStreaming, lastMessage?.content, scrollToBottomInstant, updateScrollAffordance]);
+    wasStreamingRef.current = isStreaming;
+    syncScrollInFrame();
+  }, [isStreaming, lastMessage?.id, syncScrollInFrame]);
 
-  if (messages.length === 0) return null;
+  if (!targetConversationId || messageMeta.length === 0) return null;
 
   return (
     <ListShell>
@@ -665,51 +808,16 @@ export const MessageList: React.FC<MessageListProps> = ({ conversationId }) => {
         $isStreaming={isStreaming}
       >
         <MessagesContent ref={contentRef}>
-          {messages.map((msg) => {
-            const copyTone = copyState[msg.id] ?? "idle";
-            const copyLabel =
-              copyTone === "success"
-                ? appMessages.messages.copy.success
-                : copyTone === "error"
-                  ? appMessages.messages.copy.error
-                  : appMessages.messages.copy.idle;
-
-            return (
-              <MessageWrapper key={msg.id} $role={msg.role} $align="flex-start" $gap="md">
-                <Avatar $role={msg.role}>
-                  {msg.role === "user" ? <FaUser size={14} /> : <FaRobot size={14} />}
-                </Avatar>
-                <MessageContent $role={msg.role}>
-                  <RoleName>
-                    {msg.role === "user"
-                      ? appMessages.messages.roles.user
-                      : appMessages.messages.roles.assistant}
-                  </RoleName>
-                  <MessageBody>
-                    <MessageBodyContent message={msg} />
-                  </MessageBody>
-                  <MessageActions $role={msg.role}>
-                    <CopyButton
-                      type="button"
-                      $tone={copyTone}
-                      onClick={() => copyMessage(msg.id, msg.content)}
-                      title={copyLabel}
-                      aria-label={copyLabel}
-                    >
-                      {copyTone === "success" ? (
-                        <FaCheck size={12} />
-                      ) : copyTone === "error" ? (
-                        <FaXmark size={12} />
-                      ) : (
-                        <FaCopy size={12} />
-                      )}
-                      <span>{copyLabel}</span>
-                    </CopyButton>
-                  </MessageActions>
-                </MessageContent>
-              </MessageWrapper>
-            );
-          })}
+          {messageMeta.map((message) => (
+            <MessageItem
+              key={message.id}
+              conversationId={targetConversationId}
+              messageId={message.id}
+              role={message.role}
+              copyTone={copyState[message.id] ?? "idle"}
+              onCopyMessage={copyMessage}
+            />
+          ))}
         </MessagesContent>
       </ListContainer>
       <ScrollToBottomButton

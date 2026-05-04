@@ -58,6 +58,17 @@ impl LlmProvider for AnthropicProvider {
         let event = serde_json::from_str::<StreamEvent>(data)
             .map_err(|e| format!("Failed to parse Anthropic stream event: {}", e))?;
         match event {
+            StreamEvent::MessageStart { message } => {
+                let input_tokens = message
+                    .get("usage")
+                    .and_then(|usage| usage.get("input_tokens"))
+                    .and_then(|value| value.as_u64())
+                    .unwrap_or(0) as u32;
+                Ok(Some(ParseResult::Usage {
+                    input_tokens,
+                    output_tokens: 0,
+                }))
+            }
             StreamEvent::ContentBlockDelta { delta, .. } if delta.delta_type == "text_delta" => {
                 Ok(Some(ParseResult::TextDelta(delta.text)))
             }
@@ -97,6 +108,20 @@ impl LlmProvider for AnthropicProvider {
             StreamEvent::ContentBlockStop { index } => {
                 Ok(Some(ParseResult::ToolUseComplete { index }))
             }
+            StreamEvent::MessageDelta { usage, .. } => {
+                if let Some(usage) = usage {
+                    let output_tokens = usage
+                        .get("output_tokens")
+                        .and_then(|value| value.as_u64())
+                        .unwrap_or(0) as u32;
+                    Ok(Some(ParseResult::Usage {
+                        input_tokens: 0,
+                        output_tokens,
+                    }))
+                } else {
+                    Ok(None)
+                }
+            }
             StreamEvent::Error { error } => Err(format!("{}: {}", error.error_type, error.message)),
             _ => Ok(None),
         }
@@ -115,9 +140,13 @@ mod tests {
 
     #[test]
     fn includes_non_empty_system_prompt() {
-        let request = AnthropicProvider.build_chat_request("claude-test", Some("system".into()), &[]);
+        let request =
+            AnthropicProvider.build_chat_request("claude-test", Some("system".into()), &[]);
 
-        assert_eq!(request.get("system").and_then(|value| value.as_str()), Some("system"));
+        assert_eq!(
+            request.get("system").and_then(|value| value.as_str()),
+            Some("system")
+        );
     }
 
     #[test]

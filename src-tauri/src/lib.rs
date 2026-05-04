@@ -7,6 +7,7 @@ mod providers;
 mod tools;
 
 use std::{
+    collections::HashMap,
     fs,
     path::PathBuf,
     sync::{
@@ -19,10 +20,12 @@ use std::{
 
 use commands::AppState;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewWindow, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow, WindowEvent};
 
 const WINDOW_STATE_FILE: &str = "window-state.json";
 const WINDOW_STATE_DEBOUNCE_MS: u64 = 500;
+
+type WindowStates = HashMap<String, WindowState>;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct WindowState {
@@ -37,10 +40,20 @@ fn window_state_path(app: &AppHandle) -> Option<PathBuf> {
     app.path().app_data_dir().ok().map(|dir| dir.join(WINDOW_STATE_FILE))
 }
 
-fn load_window_state(app: &AppHandle) -> Option<WindowState> {
+fn load_window_state(app: &AppHandle) -> Option<WindowStates> {
     let path = window_state_path(app)?;
     let contents = fs::read_to_string(path).ok()?;
-    serde_json::from_str(&contents).ok()
+    // Try new HashMap format first
+    if let Ok(states) = serde_json::from_str::<WindowStates>(&contents) {
+        return Some(states);
+    }
+    // Fall back to legacy single-object format, auto-migrate on next save
+    if let Ok(state) = serde_json::from_str::<WindowState>(&contents) {
+        let mut states = HashMap::new();
+        states.insert("main".to_string(), state);
+        return Some(states);
+    }
+    None
 }
 
 fn capture_window_state(window: &WebviewWindow) -> Option<WindowState> {
@@ -57,7 +70,7 @@ fn capture_window_state(window: &WebviewWindow) -> Option<WindowState> {
     })
 }
 
-fn save_window_state(app: &AppHandle, window: &WebviewWindow) {
+fn save_window_state_for_label(app: &AppHandle, window: &WebviewWindow, label: &str) {
     let Some(state) = capture_window_state(window) else {
         return;
     };
@@ -72,7 +85,10 @@ fn save_window_state(app: &AppHandle, window: &WebviewWindow) {
         return;
     }
 
-    if let Ok(contents) = serde_json::to_string_pretty(&state) {
+    let mut states = load_window_state(app).unwrap_or_default();
+    states.insert(label.to_string(), state);
+
+    if let Ok(contents) = serde_json::to_string_pretty(&states) {
         let _ = fs::write(path, contents);
     }
 }
@@ -80,6 +96,7 @@ fn save_window_state(app: &AppHandle, window: &WebviewWindow) {
 fn schedule_window_state_save(
     app: AppHandle,
     window: WebviewWindow,
+    label: String,
     generation: Arc<AtomicU64>,
 ) {
     let current_generation = generation.fetch_add(1, Ordering::Relaxed) + 1;
@@ -87,7 +104,7 @@ fn schedule_window_state_save(
     thread::spawn(move || {
         thread::sleep(Duration::from_millis(WINDOW_STATE_DEBOUNCE_MS));
         if generation.load(Ordering::Relaxed) == current_generation {
-            save_window_state(&app, &window);
+            save_window_state_for_label(&app, &window, &label);
         }
     });
 }
@@ -107,8 +124,8 @@ fn is_position_on_screen(window: &WebviewWindow, state: &WindowState) -> bool {
     })
 }
 
-fn restore_window_state(window: &WebviewWindow, state: WindowState) {
-    if !is_position_on_screen(window, &state) {
+fn restore_window_state(window: &WebviewWindow, state: &WindowState) {
+    if !is_position_on_screen(window, state) {
         return;
     }
 
@@ -127,8 +144,11 @@ fn setup_window_state(app: &tauri::App) {
         return;
     };
 
-    if let Some(state) = load_window_state(app.handle()) {
-        restore_window_state(&window, state);
+    let states = load_window_state(app.handle());
+    if let Some(ref states) = states {
+        if let Some(state) = states.get("main") {
+            restore_window_state(&window, state);
+        }
     }
 
     window.show().ok();
@@ -137,27 +157,85 @@ fn setup_window_state(app: &tauri::App) {
     let app_handle = app.handle().clone();
     let window_for_events = window.clone();
     let save_generation = generation.clone();
+    let label = "main".to_string();
 
     window.on_window_event(move |event| match event {
         WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
             schedule_window_state_save(
                 app_handle.clone(),
                 window_for_events.clone(),
+                label.clone(),
                 save_generation.clone(),
             );
         }
         WindowEvent::CloseRequested { .. } => {
-            save_window_state(&app_handle, &window_for_events);
+            save_window_state_for_label(&app_handle, &window_for_events, &label);
             close_trace_window(&app_handle);
         }
         _ => {}
     });
 }
 
+/// Set up state persistence for the trace window (called from commands.rs after creation).
+/// Restores persisted size/position, registers debounced save on move/resize, and
+/// immediate save on CloseRequested.
+pub fn setup_trace_window_state(app: &AppHandle, trace_window: &WebviewWindow) {
+    let states = load_window_state(app);
+    if let Some(ref states) = states {
+        if let Some(state) = states.get("trace") {
+            restore_window_state(trace_window, state);
+        }
+    }
+
+    let generation = Arc::new(AtomicU64::new(0));
+    let app_handle = app.clone();
+    let window_for_events = trace_window.clone();
+    let save_generation = generation.clone();
+    let label = "trace".to_string();
+
+    trace_window.on_window_event(move |event| {
+        match event {
+            WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
+                schedule_window_state_save(
+                    app_handle.clone(),
+                    window_for_events.clone(),
+                    label.clone(),
+                    save_generation.clone(),
+                );
+            }
+            WindowEvent::CloseRequested { .. } => {
+                save_window_state_for_label(&app_handle, &window_for_events, &label);
+                let _ = app_handle.emit("trace-window-closed", ());
+            }
+            _ => {}
+        }
+    });
+}
+
+/// Save the trace window state before hiding it (called from hide_trace_window).
+pub fn save_trace_window_state(app: &AppHandle) {
+    if let Some(trace) = app.get_webview_window("trace") {
+        save_window_state_for_label(app, &trace, "trace");
+    }
+}
+
 fn close_trace_window(app: &AppHandle) {
     if let Some(trace) = app.get_webview_window("trace") {
         let _ = trace.close();
     }
+}
+
+/// Restore trace window state from persistence (called from open_trace_window).
+/// Returns true if state was restored (meaning .center() should be skipped).
+pub fn restore_trace_window_state(app: &AppHandle, trace_window: &WebviewWindow) -> bool {
+    let states = load_window_state(app);
+    if let Some(ref states) = states {
+        if let Some(state) = states.get("trace") {
+            restore_window_state(trace_window, state);
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -179,6 +257,7 @@ pub fn run() {
             commands::hide_trace_window,
             commands::close_trace_window,
             commands::is_trace_window_open,
+            commands::set_trace_always_on_top,
             commands::save_settings,
             commands::load_settings,
             commands::list_models,

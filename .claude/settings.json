@@ -32,7 +32,14 @@
       "Bash(cargo check *)",
       "WebSearch",
       "WebFetch(domain:v2.tauri.app)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(New-Item -ItemType Directory -Path \"f:\\\\project\\\\code-agent\\\\openspec\\\\changes\\\\optimize-streaming-render-performance\\\\specs\\\\streaming-render-performance\" -Force)",
+      "PowerShell(openspec list --json 2>$null)",
+      "Bash(Get-ChildItem -Recurse openspec/changes/enhance-trace-window, openspec/changes/fix-streaming-scroll-and-token-usage)",
+      "Bash(Select-Object FullName)",
+      "PowerShell(openspec list --json)",
+      "Bash(Select-Object -First 50)",
+      "PowerShell(npx tsc --noEmit --pretty 2>&1)"
     ],
     "additionalDirectories": [
       "F:\\project\\code-agent\\openspec\\changes\\multi-provider-api-config\\specs",
