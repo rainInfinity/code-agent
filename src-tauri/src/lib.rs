@@ -130,6 +130,8 @@ fn setup_window_state(app: &tauri::App) {
         restore_window_state(&window, state);
     }
 
+    window.show().ok();
+
     let generation = Arc::new(AtomicU64::new(0));
     let app_handle = app.handle().clone();
     let window_for_events = window.clone();
@@ -154,6 +156,7 @@ fn setup_window_state(app: &tauri::App) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             app.manage(AppState::new(app.handle()));
             setup_window_state(app);

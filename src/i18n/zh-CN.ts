@@ -77,6 +77,15 @@ export const zhCN = {
       copy: '复制代码',
       copied: '已复制',
     },
+    modeToggle: {
+      chat: '对话',
+      code: '编程',
+      confirmSwitchWhenStreaming: '切换模式将中断当前响应，确定要切换吗？',
+    },
+    workDir: {
+      browse: '浏览',
+      addHint: '请先添加项目目录',
+    },
   },
   status: {
     connected: '已连接',
@@ -90,7 +99,10 @@ export const zhCN = {
   settings: {
     title: '设置',
     close: '关闭设置',
-    apiConfiguration: 'API 配置',
+    sidebar: {
+      general: '通用',
+      api: 'API 配置',
+    },
     provider: '提供商',
     providerOptions: {
       anthropic: 'Anthropic',
@@ -120,21 +132,6 @@ export const zhCN = {
     cancel: '取消',
     save: '保存',
     saving: '保存中...',
-    mode: '工作模式',
-    modeOptions: {
-      chat: '对话模式',
-      code: '编程模式',
-    },
-    modeDescription: {
-      chat: '全局对话，无需选择工作目录',
-      code: '在工作目录下对话，每个目录独立管理会话',
-    },
-    workDir: '工作目录',
-    workDirPlaceholder: '选择或输入工作目录路径...',
-    workDirBrowse: '浏览',
-    workDirHint: '选择项目根目录，所有对话将关联到此目录',
-    currentWorkDir: '当前工作目录',
-    noWorkDir: '请先在设置中选择工作目录',
   },
   conversations: {
     newConversation: '新会话',

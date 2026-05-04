@@ -4,17 +4,12 @@ import {
   FaXmark,
   FaKey,
   FaServer,
-  FaRobot,
   FaPalette,
+  FaGear,
   FaSun,
   FaMoon,
   FaFloppyDisk,
   FaRotate,
-  FaCode,
-  FaComments,
-  FaFolder,
-  FaFolderOpen,
-  FaTrashCan,
 } from 'react-icons/fa6';
 import { SiAnthropic, SiOpenai } from 'react-icons/si';
 import type { IconType } from 'react-icons';
@@ -56,10 +51,14 @@ const Overlay = styled.div`
 `;
 
 const Modal = styled.div`
-  width: 520px;
-  max-width: 90vw;
-  max-height: 80vh;
-  overflow-y: auto;
+  position: relative;
+  width: 760px;
+  max-width: 92vw;
+  height: 560px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   background-color: ${({ theme }) => theme.colors.bgElevated};
   border: 1px solid ${({ theme }) => theme.colors.border};
   border-radius: ${({ theme }) => theme.borderRadius.xl};
@@ -67,40 +66,82 @@ const Modal = styled.div`
   animation: ${slideUp} 250ms ease-out;
 `;
 
-const ModalHeader = styled(Row)`
-  padding: ${({ theme }) => theme.spacing.xl};
-  border-bottom: 1px solid ${({ theme }) => theme.colors.divider};
-`;
+const ModalBody = styled.div`
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(132px, 160px) minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
 
-const ModalTitle = styled.h2`
-  font-size: ${({ theme }) => theme.typography.fontSize.lg};
-  font-weight: ${({ theme }) => theme.typography.fontWeight.semibold};
-  color: ${({ theme }) => theme.colors.textPrimary};
-`;
-
-const CloseButton = styled.button`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: ${({ theme }) => theme.borderRadius.md};
-  color: ${({ theme }) => theme.colors.textSecondary};
-  transition: all ${({ theme }) => theme.transitions.fast};
-
-  &:hover {
-    background-color: ${({ theme }) => theme.colors.bgActive};
-    color: ${({ theme }) => theme.colors.textPrimary};
+  @media (max-width: 700px) {
+    grid-template-columns: minmax(112px, 34%) minmax(0, 1fr);
   }
-`;
-
-const ModalBody = styled(Column)`
-  padding: ${({ theme }) => theme.spacing.xl};
 `;
 
 const Section = styled(Column)``;
 
+const SectionNav = styled.nav`
+  padding: ${({ theme }) => theme.spacing.lg} ${({ theme }) => theme.spacing.md};
+  border-right: 1px solid ${({ theme }) => theme.colors.divider};
+  background-color: ${({ theme }) => theme.colors.bgSecondary};
+  border-radius: ${({ theme }) => theme.borderRadius.xl} 0 0 0;
+`;
+
+const SectionNavButton = styled.button<{ $active: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing.sm};
+  width: 100%;
+  min-height: 36px;
+  padding: ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.md};
+  border-radius: ${({ theme }) => theme.borderRadius.md};
+  color: ${({ theme, $active }) =>
+    $active ? theme.colors.accentPrimary : theme.colors.textSecondary};
+  background-color: ${({ theme, $active }) =>
+    $active ? `${theme.colors.accentPrimary}14` : 'transparent'};
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
+  font-weight: ${({ theme, $active }) =>
+    $active ? theme.typography.fontWeight.semibold : theme.typography.fontWeight.medium};
+  transition: color ${({ theme }) => theme.transitions.fast},
+    background-color ${({ theme }) => theme.transitions.fast};
+
+  &:hover {
+    color: ${({ theme }) => theme.colors.accentPrimary};
+    background-color: ${({ theme }) => theme.colors.bgHover};
+  }
+
+  &:focus-visible {
+    outline: 2px solid ${({ theme }) => theme.colors.inputBorderFocus};
+    outline-offset: 2px;
+  }
+`;
+
+const SectionContent = styled(Column)`
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: ${({ theme }) => theme.spacing.xl};
+`;
+
+const SectionScroll = styled(Column)`
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+`;
+
+const SectionActions = styled(Row)`
+  flex-shrink: 0;
+  padding-top: ${({ theme }) => theme.spacing.lg};
+`;
+
 const SectionTitle = styled.h3`
+  font-size: ${({ theme }) => theme.typography.fontSize.lg};
+  font-weight: ${({ theme }) => theme.typography.fontWeight.semibold};
+  color: ${({ theme }) => theme.colors.textPrimary};
+  margin-bottom: ${({ theme }) => theme.spacing.xs};
+`;
+
+const SubLabel = styled.span`
   font-size: ${({ theme }) => theme.typography.fontSize.sm};
   font-weight: ${({ theme }) => theme.typography.fontWeight.semibold};
   color: ${({ theme }) => theme.colors.textSecondary};
@@ -286,100 +327,25 @@ const ThemeButton = styled.button<{ $active: boolean }>`
   }
 `;
 
-const ModeToggleGroup = styled(Row)``;
-
-const ModeButton = styled.button<{ $active: boolean }>`
-  display: flex;
-  align-items: center;
-  gap: ${({ theme }) => theme.spacing.sm};
-  flex: 1;
-  padding: ${({ theme }) => theme.spacing.md};
-  border-radius: ${({ theme }) => theme.borderRadius.md};
-  border: 1px solid ${({ theme, $active }) =>
-    $active ? theme.colors.accentPrimary : theme.colors.border};
-  background-color: ${({ theme, $active }) =>
-    $active ? `${theme.colors.accentPrimary}15` : 'transparent'};
-  color: ${({ theme, $active }) =>
-    $active ? theme.colors.accentPrimary : theme.colors.textSecondary};
-  font-size: ${({ theme }) => theme.typography.fontSize.sm};
-  font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
-  transition: all ${({ theme }) => theme.transitions.fast};
-  cursor: pointer;
-
-  &:hover {
-    border-color: ${({ theme }) => theme.colors.accentPrimary};
-    color: ${({ theme }) => theme.colors.accentPrimary};
-  }
-`;
-
-const ModeDescription = styled.span`
-  font-size: ${({ theme }) => theme.typography.fontSize.xs};
-  color: ${({ theme }) => theme.colors.textTertiary};
-  line-height: 1.4;
-`;
-
-const WorkDirInputRow = styled(Row)``;
-
-const WorkDirInput = styled(Input)`
-  flex: 1;
-`;
-
-const WorkDirList = styled(Column)`
-  max-height: 120px;
-  overflow-y: auto;
-`;
-
-const WorkDirItem = styled(Row)`
-  padding: ${({ theme }) => theme.spacing.xs} ${({ theme }) => theme.spacing.sm};
-  border-radius: ${({ theme }) => theme.borderRadius.sm};
-  font-size: ${({ theme }) => theme.typography.fontSize.xs};
-  color: ${({ theme }) => theme.colors.textSecondary};
-  background-color: ${({ theme }) => theme.colors.bgHover};
-  transition: background-color ${({ theme }) => theme.transitions.fast};
-
-  &:hover {
-    background-color: ${({ theme }) => theme.colors.bgActive};
-  }
-`;
-
-const WorkDirName = styled.span`
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
-  color: ${({ theme }) => theme.colors.textPrimary};
-`;
-
-const WorkDirPath = styled.span`
-  font-size: ${({ theme }) => theme.typography.fontSize.xs};
-  color: ${({ theme }) => theme.colors.textTertiary};
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-`;
-
-const RemoveDirButton = styled.button`
+const CloseButton = styled.button`
+  position: absolute;
+  top: ${({ theme }) => theme.spacing.lg};
+  right: ${({ theme }) => theme.spacing.lg};
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  min-width: 24px;
-  border-radius: ${({ theme }) => theme.borderRadius.sm};
-  color: ${({ theme }) => theme.colors.textTertiary};
+  width: 40px;
+  height: 32px;
+  min-width: 40px;
+  border-radius: ${({ theme }) => theme.borderRadius.md};
+  color: ${({ theme }) => theme.colors.textSecondary};
   transition: all ${({ theme }) => theme.transitions.fast};
 
   &:hover {
-    color: ${({ theme }) => theme.colors.error};
     background-color: ${({ theme }) => theme.colors.bgActive};
+    color: ${({ theme }) => theme.colors.textPrimary};
   }
-`;
-
-const ModalFooter = styled(Row)`
-  padding: ${({ theme }) => theme.spacing.lg} ${({ theme }) => theme.spacing.xl};
-  border-top: 1px solid ${({ theme }) => theme.colors.divider};
 `;
 
 const SaveButton = styled.button`
@@ -470,18 +436,27 @@ const providerIcons: Record<ProviderId, IconType> = {
   openai: SiOpenai,
 };
 
+type SettingsSection = 'general' | 'api';
+
+const sectionItems: Array<{
+  id: SettingsSection;
+  label: string;
+  icon: IconType;
+}> = [
+  { id: 'general', label: messages.settings.sidebar.general, icon: FaGear },
+  { id: 'api', label: messages.settings.sidebar.api, icon: FaKey },
+];
+
 export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const settings = useSettingsStore();
 
+  const [activeSection, setActiveSection] = useState<SettingsSection>('general');
   const [providerId, setProviderId] = useState<ProviderId>(settings.activeProviderId);
   const [drafts, setDrafts] = useState<Record<ProviderId, ProviderSettings>>(settings.providers);
   const [apiKey, setApiKey] = useState('');
   const [apiEndpoint, setApiEndpoint] = useState(settings.activeProviderSettings.apiEndpoint);
   const [model, setModel] = useState(settings.activeProviderSettings.model);
   const [theme, setThemeLocal] = useState(settings.theme);
-  const [agentMode, setAgentModeLocal] = useState(settings.agentMode);
-  const [workDirInput, setWorkDirInput] = useState('');
-  const [workingDirs, setWorkingDirs] = useState(settings.workingDirectories);
   const [apiKeyConfigured, setApiKeyConfigured] = useState(settings.apiKeyConfigured);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -564,26 +539,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     setModelError(null);
   };
 
-  const handleAddWorkDir = () => {
-    const trimmed = workDirInput.trim();
-    if (!trimmed) return;
-    if (workingDirs.some((d) => d.path === trimmed)) return;
-    const name = trimmed.split(/[/\\]/).filter(Boolean).pop() ?? trimmed;
-    setWorkingDirs((prev) => [...prev, { path: trimmed, name, addedAt: Date.now() }]);
-    setWorkDirInput('');
-  };
-
-  const handleRemoveWorkDir = (path: string) => {
-    setWorkingDirs((prev) => prev.filter((d) => d.path !== path));
-  };
-
-  const handleWorkDirInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleAddWorkDir();
-    }
-  };
-
   const handleSave = async () => {
     setIsSaving(true);
     setSaveError(null);
@@ -612,8 +567,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         activeProviderSettings: nextProviderSettings,
         activeProviderDefinition: getProvider(providerId),
         apiKeyConfigured: nextConfigured,
-        agentMode,
-        workingDirectories: workingDirs,
       });
       setApiKey('');
       setApiKeyConfigured(nextConfigured);
@@ -651,255 +604,199 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   return (
     <Overlay onClick={onClose}>
       <Modal onClick={(e) => e.stopPropagation()}>
-        <ModalHeader $align="center" $justify="space-between">
-          <ModalTitle>{messages.settings.title}</ModalTitle>
-          <CloseButton onClick={onClose} aria-label={messages.settings.close}>
-            <FaXmark size={16} />
-          </CloseButton>
-        </ModalHeader>
+        <CloseButton onClick={onClose} aria-label={messages.settings.close} title={messages.settings.close}>
+          <FaXmark size={16} />
+        </CloseButton>
 
-        <ModalBody $gap="xl">
-          <Section $gap="md">
-            <SectionTitle>{messages.settings.apiConfiguration}</SectionTitle>
+        <ModalBody>
+          <SectionNav aria-label={messages.settings.title}>
+            <Column $gap="xs">
+              {sectionItems.map((item) => {
+                const SectionIcon = item.icon;
+                return (
+                  <SectionNavButton
+                    key={item.id}
+                    type="button"
+                    $active={activeSection === item.id}
+                    onClick={() => setActiveSection(item.id)}
+                  >
+                    <SectionIcon size={13} />
+                    <span>{item.label}</span>
+                  </SectionNavButton>
+                );
+              })}
+            </Column>
+          </SectionNav>
 
-            <FieldGroup $gap="xs">
-              <Label id="provider-label">
-                <LabelIcon><FaRobot size={12} /></LabelIcon>
-                {messages.settings.provider}
-              </Label>
-              <ProviderRadioGroup
-                role="radiogroup"
-                aria-labelledby="provider-label"
-              >
-                {PROVIDER_IDS.map((id) => {
-                  const ProviderIcon = providerIcons[id];
-                  return (
-                    <ProviderRadioButton
-                      key={id}
-                      type="button"
-                      $active={providerId === id}
-                      role="radio"
-                      aria-checked={providerId === id}
-                      aria-label={messages.settings.providerOptions[id]}
-                      title={messages.settings.providerOptions[id]}
-                      onClick={() => handleProviderChange(id)}
-                    >
-                      <ProviderIcon size={18} />
-                    </ProviderRadioButton>
-                  );
-                })}
-              </ProviderRadioGroup>
-            </FieldGroup>
+          <SectionContent $gap="xl">
+            <SectionScroll $gap="xl">
+              {activeSection === 'general' && (
+                <Section $gap="md">
+                  <SectionTitle>{messages.settings.sidebar.general}</SectionTitle>
 
-            <FieldGroup $gap="xs">
-              <FieldLabelRow $align="center" $justify="space-between" $gap="md">
-                <Label htmlFor="api-key">
-                  <LabelIcon><FaKey size={12} /></LabelIcon>
-                  {messages.settings.apiKey}
-                </Label>
-                {providerHasApiKey && (
-                  <ConfiguredStatus $align="center" $gap="xs">
-                    <FaKey size={11} />
-                    {messages.settings.apiKeyConfigured}
-                  </ConfiguredStatus>
-                )}
-              </FieldLabelRow>
-              <Input
-                id="api-key"
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={
-                  providerHasApiKey
-                    ? messages.settings.apiKeyReplacePlaceholder
-                    : `${activeProvider.apiKeyPrefix}...`
-                }
-                autoComplete="off"
-              />
-              <HelperText>
-                {providerHasApiKey
-                  ? messages.settings.apiKeyKeepHelp
-                  : messages.settings.apiKeyStorageHelpForProvider(activeProvider.name)}
-              </HelperText>
-              {saveError && <ErrorText>{saveError}</ErrorText>}
-            </FieldGroup>
+                  <InlineFieldGroup $gap="md">
+                    <Label>
+                      <LabelIcon><FaPalette size={12} /></LabelIcon>
+                      {messages.settings.theme}
+                    </Label>
+                    <ThemeToggleGroup $gap="sm">
+                      <ThemeButton
+                        type="button"
+                        $active={theme === 'dark'}
+                        onClick={() => setThemeLocal('dark')}
+                      >
+                        <FaMoon size={12} />
+                        {messages.settings.dark}
+                      </ThemeButton>
+                      <ThemeButton
+                        type="button"
+                        $active={theme === 'light'}
+                        onClick={() => setThemeLocal('light')}
+                      >
+                        <FaSun size={12} />
+                        {messages.settings.light}
+                      </ThemeButton>
+                    </ThemeToggleGroup>
+                  </InlineFieldGroup>
+                </Section>
+              )}
 
-            <FieldGroup $gap="xs">
-              <Label htmlFor="api-endpoint">
-                <LabelIcon><FaServer size={12} /></LabelIcon>
-                {messages.settings.apiEndpoint}
-              </Label>
-              <Input
-                id="api-endpoint"
-                type="url"
-                value={apiEndpoint}
-                onChange={(e) => setApiEndpoint(e.target.value)}
-                placeholder={activeProvider.defaultEndpoint}
-              />
-              <HelperText>{messages.settings.apiEndpointHelpForProvider(activeProvider.name)}</HelperText>
-            </FieldGroup>
+              {activeSection === 'api' && (
+                <Section $gap="md">
+                  <SectionTitle>{messages.settings.sidebar.api}</SectionTitle>
 
-            <FieldGroup $gap="xs">
-              <Label htmlFor="model">
-                <LabelIcon><FaRobot size={12} /></LabelIcon>
-                {messages.settings.model}
-              </Label>
-              <ModelControlRow $gap="sm">
-                <Select
-                  id="model"
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  disabled={availableModels.length === 0}
-                >
-                  {availableModels.length === 0 ? (
-                    <option value={model}>{model}</option>
-                  ) : (
-                    availableModels.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.displayName ? `${item.displayName} (${item.id})` : item.id}
-                      </option>
-                    ))
-                  )}
-                </Select>
-                <IconButton
-                  onClick={handleLoadModels}
-                  disabled={isLoadingModels}
-                  $loading={isLoadingModels}
-                  title={
-                    isLoadingModels
-                      ? messages.settings.refreshModelsLoading
-                      : messages.settings.refreshModels
-                  }
-                  aria-label={
-                    isLoadingModels
-                      ? messages.settings.refreshModelsLoading
-                      : messages.settings.refreshModels
-                  }
-                >
-                  <FaRotate size={13} />
-                </IconButton>
-              </ModelControlRow>
-              <HelperText>
-                {availableModels.length > 0
-                  ? messages.settings.modelsAvailable(availableModels.length)
-                  : messages.settings.modelsRefreshHelp}
-              </HelperText>
-              {modelError && <ErrorText>{modelError}</ErrorText>}
-            </FieldGroup>
-          </Section>
+                  <FieldGroup $gap="xs">
+                    <Label id="provider-label">
+                      <LabelIcon><FaServer size={12} /></LabelIcon>
+                      {messages.settings.provider}
+                    </Label>
+                    <ProviderRadioGroup role="radiogroup" aria-labelledby="provider-label">
+                      {PROVIDER_IDS.map((id) => {
+                        const ProviderIcon = providerIcons[id];
+                        return (
+                          <ProviderRadioButton
+                            key={id}
+                            type="button"
+                            $active={providerId === id}
+                            role="radio"
+                            aria-checked={providerId === id}
+                            aria-label={messages.settings.providerOptions[id]}
+                            title={messages.settings.providerOptions[id]}
+                            onClick={() => handleProviderChange(id)}
+                          >
+                            <ProviderIcon size={18} />
+                          </ProviderRadioButton>
+                        );
+                      })}
+                    </ProviderRadioGroup>
+                  </FieldGroup>
 
-          <Section $gap="md">
-            <SectionTitle>{messages.settings.mode}</SectionTitle>
-
-            <ModeToggleGroup $gap="sm">
-              <ModeButton
-                $active={agentMode === 'chat'}
-                onClick={() => setAgentModeLocal('chat')}
-              >
-                <FaComments size={16} />
-                <span>{messages.settings.modeOptions.chat}</span>
-              </ModeButton>
-              <ModeButton
-                $active={agentMode === 'code'}
-                onClick={() => setAgentModeLocal('code')}
-              >
-                <FaCode size={16} />
-                <span>{messages.settings.modeOptions.code}</span>
-              </ModeButton>
-            </ModeToggleGroup>
-
-            <ModeDescription>
-              {agentMode === 'chat'
-                ? messages.settings.modeDescription.chat
-                : messages.settings.modeDescription.code}
-            </ModeDescription>
-
-            {agentMode === 'code' && (
-              <>
-                <FieldGroup $gap="xs">
-                  <Label>
-                    <LabelIcon><FaFolder size={12} /></LabelIcon>
-                    {messages.settings.workDir}
-                  </Label>
-                  <WorkDirInputRow $gap="sm">
-                    <WorkDirInput
-                      type="text"
-                      value={workDirInput}
-                      onChange={(e) => setWorkDirInput(e.target.value)}
-                      onKeyDown={handleWorkDirInputKeyDown}
-                      placeholder={messages.settings.workDirPlaceholder}
+                  <FieldGroup $gap="xs">
+                    <FieldLabelRow $align="center" $justify="space-between" $gap="md">
+                      <Label htmlFor="api-key">
+                        <LabelIcon><FaKey size={12} /></LabelIcon>
+                        {messages.settings.apiKey}
+                      </Label>
+                      {providerHasApiKey && (
+                        <ConfiguredStatus $align="center" $gap="xs">
+                          <FaKey size={11} />
+                          {messages.settings.apiKeyConfigured}
+                        </ConfiguredStatus>
+                      )}
+                    </FieldLabelRow>
+                    <Input
+                      id="api-key"
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder={
+                        providerHasApiKey
+                          ? messages.settings.apiKeyReplacePlaceholder
+                          : `${activeProvider.apiKeyPrefix}...`
+                      }
+                      autoComplete="off"
                     />
-                    <IconButton
-                      onClick={handleAddWorkDir}
-                      disabled={!workDirInput.trim()}
-                      title={messages.settings.workDirBrowse}
-                      aria-label={messages.settings.workDirBrowse}
-                    >
-                      <FaFolderOpen size={13} />
-                    </IconButton>
-                  </WorkDirInputRow>
-                  <HelperText>{messages.settings.workDirHint}</HelperText>
-                </FieldGroup>
+                    <HelperText>
+                      {providerHasApiKey
+                        ? messages.settings.apiKeyKeepHelp
+                        : messages.settings.apiKeyStorageHelpForProvider(activeProvider.name)}
+                    </HelperText>
+                    {saveError && <ErrorText>{saveError}</ErrorText>}
+                  </FieldGroup>
 
-                {workingDirs.length > 0 && (
-                  <WorkDirList $gap="xs">
-                    {workingDirs.map((dir) => (
-                      <WorkDirItem key={dir.path} $align="center" $gap="sm">
-                        <FaFolder size={12} />
-                        <Column $gap="xs">
-                          <WorkDirName>{dir.name}</WorkDirName>
-                          <WorkDirPath>{dir.path}</WorkDirPath>
-                        </Column>
-                        <RemoveDirButton
-                          onClick={() => handleRemoveWorkDir(dir.path)}
-                          title="移除工作目录"
-                          aria-label="移除工作目录"
-                        >
-                          <FaTrashCan size={10} />
-                        </RemoveDirButton>
-                      </WorkDirItem>
-                    ))}
-                  </WorkDirList>
-                )}
-              </>
-            )}
-          </Section>
+                  <FieldGroup $gap="xs">
+                    <Label htmlFor="api-endpoint">
+                      <LabelIcon><FaServer size={12} /></LabelIcon>
+                      {messages.settings.apiEndpoint}
+                    </Label>
+                    <Input
+                      id="api-endpoint"
+                      type="url"
+                      value={apiEndpoint}
+                      onChange={(e) => setApiEndpoint(e.target.value)}
+                      placeholder={activeProvider.defaultEndpoint}
+                    />
+                    <HelperText>{messages.settings.apiEndpointHelpForProvider(activeProvider.name)}</HelperText>
+                  </FieldGroup>
 
-          <Section $gap="md">
-            <SectionTitle>{messages.settings.appearance}</SectionTitle>
+                  <FieldGroup $gap="xs">
+                    <SubLabel>{messages.settings.model}</SubLabel>
+                    <ModelControlRow $gap="sm" style={{ marginTop: 8 }}>
+                      <Select
+                        id="model"
+                        value={model}
+                        onChange={(e) => setModel(e.target.value)}
+                        disabled={availableModels.length === 0}
+                      >
+                        {availableModels.length === 0 ? (
+                          <option value={model}>{model}</option>
+                        ) : (
+                          availableModels.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.displayName ? `${item.displayName} (${item.id})` : item.id}
+                            </option>
+                          ))
+                        )}
+                      </Select>
+                      <IconButton
+                        type="button"
+                        onClick={handleLoadModels}
+                        disabled={isLoadingModels}
+                        $loading={isLoadingModels}
+                        title={
+                          isLoadingModels
+                            ? messages.settings.refreshModelsLoading
+                            : messages.settings.refreshModels
+                        }
+                        aria-label={
+                          isLoadingModels
+                            ? messages.settings.refreshModelsLoading
+                            : messages.settings.refreshModels
+                        }
+                      >
+                        <FaRotate size={13} />
+                      </IconButton>
+                    </ModelControlRow>
+                    <HelperText>
+                      {availableModels.length > 0
+                        ? messages.settings.modelsAvailable(availableModels.length)
+                        : messages.settings.modelsRefreshHelp}
+                    </HelperText>
+                    {modelError && <ErrorText>{modelError}</ErrorText>}
+                  </FieldGroup>
+                </Section>
+              )}
+            </SectionScroll>
 
-            <InlineFieldGroup $gap="md">
-              <Label>
-                <LabelIcon><FaPalette size={12} /></LabelIcon>
-                {messages.settings.theme}
-              </Label>
-              <ThemeToggleGroup $gap="sm">
-                <ThemeButton
-                  $active={theme === 'dark'}
-                  onClick={() => setThemeLocal('dark')}
-                >
-                  <FaMoon size={12} />
-                  {messages.settings.dark}
-                </ThemeButton>
-                <ThemeButton
-                  $active={theme === 'light'}
-                  onClick={() => setThemeLocal('light')}
-                >
-                  <FaSun size={12} />
-                  {messages.settings.light}
-                </ThemeButton>
-              </ThemeToggleGroup>
-            </InlineFieldGroup>
-          </Section>
+            <SectionActions $justify="flex-end" $align="center" $gap="sm">
+              <CancelButton onClick={onClose}>{messages.settings.cancel}</CancelButton>
+              <SaveButton onClick={handleSave} disabled={isSaving}>
+                <FaFloppyDisk size={13} />
+                {isSaving ? messages.settings.saving : messages.settings.save}
+              </SaveButton>
+            </SectionActions>
+          </SectionContent>
         </ModalBody>
-
-        <ModalFooter $justify="flex-end" $gap="sm">
-          <CancelButton onClick={onClose}>{messages.settings.cancel}</CancelButton>
-          <SaveButton onClick={handleSave} disabled={isSaving}>
-            <FaFloppyDisk size={13} />
-            {isSaving ? messages.settings.saving : messages.settings.save}
-          </SaveButton>
-        </ModalFooter>
       </Modal>
     </Overlay>
   );
