@@ -46,6 +46,64 @@
 - `exit_trace_docking`：退出贴靠时清除标记（状态重置）
 - `set_trace_docking_side`（进入贴靠）：重新进入贴靠时清除标记
 
+## 新发现问题：停靠模式 + 会话切换导致 Trace 窗口隐藏
+
+### 现象
+
+在独立模式下关闭「始终显示」（isPinned）和「置顶」（alwaysOnTop）后切换到停靠模式，此时切换会话，Trace 窗口会隐藏。
+
+但如果先在独立模式下打开「始终显示」和「置顶」，再切换到停靠模式，切换会话时 Trace 窗口不会隐藏。
+
+### 根因
+
+前端 `useChatStore.isTracePinned` 与后端停靠状态不同步：
+
+```
+独立模式: isPinned = false, alwaysOnTop = false
+    ↓
+切换到停靠模式
+    ↓ 后端 set_trace_docking_side:
+    ↓   docking.side = Some(side)  ✓
+    ↓   docking.always_on_top = true  ✓
+    ↓   → apply_trace_docking → trace.show(), trace.set_always_on_top(true)  ✓
+    ↓ 前端 useTraceStore.setDocking:
+    ↓   docking.isDocked = true  ✓
+    ↓   alwaysOnTop = true  ✓
+    ↓ useChatStore.isTracePinned = false  ✗ 未同步！
+    ↓
+切换会话
+    ↓ StatusBar.syncTraceWindow() 检查 isPinned
+    ↓ isPinned = false → hideTraceWindow() ✗ Trace 被隐藏！
+```
+
+`syncTraceWindow`（StatusBar.tsx:186-200）在会话切换时的保护逻辑仅检查 `isPinned`，未考虑停靠模式（`isDocked`）。停靠模式下 Trace 应始终随主窗口保持可见，不受 `isPinned` 状态影响。
+
+### 修复方案
+
+**推荐方案 A：`syncTraceWindow` 增加停靠状态检查**
+
+在 `StatusBar.syncTraceWindow` 中，检测到 `isDocked` 时，即使 `isPinned = false` 也不隐藏 Trace 窗口。
+
+实现方式：
+- 主窗口的 StatusBar 需要感知停靠状态
+- 途径 1（推荐）：在 `useChatStore` 中新增 `isTraceDocked` 字段，通过监听 `trace-docking-changed` 事件同步
+- 途径 2：在 `syncTraceWindow` 中调用 `getTraceDockingState()` IPC 获取当前停靠状态
+
+**方案 B：后端进入停靠时 emit `trace-pin-changed`**
+
+在 `set_trace_docking_side` 中 emit `trace-pin-changed(true)`，同步更新前端的 `isPinned`。
+
+风险：pin 和 dock 语义不同，退出停靠时需要正确恢复 pin 状态。
+
+### 决策
+
+选择 **方案 A 途径 1**：在 `useChatStore` 中存储 `isTraceDocked` 并在会话切换逻辑中增加停靠判断。理由：
+
+- 直接修复决策点，防御性最强
+- 不混淆 pin 和 dock 的语义
+- 不增加额外的 IPC 调用
+- 利用已有 `trace-docking-changed` 事件同步机制
+
 ## Risks / Trade-offs
 
 - **窗口状态不一致风险**：如果 `window-state.json` 中的 `hiddenWhileDocked` 因崩溃未及时清除，重启后 Trace 打开可能不显示 → 缓解：`open_trace_window` 始终清除标记后再显示，一次正常的打开/关闭循环即可修复

@@ -144,8 +144,16 @@ export const zhCN = {
   conversations: {
     newConversation: '新会话',
   },
+  fold: {
+    divider: {
+      title: (turnCount: number) => `以上 ${turnCount} 轮对话未渲染`,
+      tokenInfo: (tokenCount: number) => `约 ${tokenCount} tokens`,
+      loadMore: (turnCount: number) => `加载最近 ${turnCount} 轮`,
+      expandAll: '展开全部',
+    },
+  },
   trace: {
-    title: 'Agent Trace',
+    title: 'Trace',
     waiting: '等待 Agent 启动...',
     minimizeTrace: '最小化 Trace',
     maximizeTrace: '最大化 Trace',

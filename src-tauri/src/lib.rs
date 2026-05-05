@@ -33,6 +33,7 @@ const TRACE_DOCKING_MAX_WIDTH: f64 = 800.0;
 const TRACE_DOCKING_RESIZE_SYNC_MS: u64 = 160;
 const DOCKING_DRAG_EXIT_THRESHOLD_MS: i64 = 150;
 const MAIN_TITLE_BAR_HEIGHT: i32 = 42;
+const MAIN_TRACE_GAP: i32 = 10;
 
 static LAST_TRACE_DOCKING_APPLY_MS: AtomicI64 = AtomicI64::new(0);
 
@@ -301,9 +302,9 @@ fn calculate_trace_docking_bounds(
         (TraceDockingSide::Right, true) => {
             main_content_position.x + main_content_size.width as i32 - width_i32
         }
-        (TraceDockingSide::Left, false) => main_content_position.x - width_i32,
+        (TraceDockingSide::Left, false) => main_content_position.x - width_i32 - MAIN_TRACE_GAP,
         (TraceDockingSide::Right, false) => {
-            main_content_position.x + main_content_size.width as i32
+            main_content_position.x + main_content_size.width as i32 + MAIN_TRACE_GAP
         }
     };
 
@@ -758,7 +759,8 @@ mod tests {
 
     #[test]
     fn deserialize_trace_docking_state_without_hidden_while_docked() {
-        let json = r#"{"side":"right","attachedWidth":450.0,"alwaysOnTop":true,"hiddenWithMain":false}"#;
+        let json =
+            r#"{"side":"right","attachedWidth":450.0,"alwaysOnTop":true,"hiddenWithMain":false}"#;
         let state: TraceDockingState = serde_json::from_str(json).unwrap();
         assert_eq!(state.hidden_while_docked, false);
         assert_eq!(state.side, Some(TraceDockingSide::Right));

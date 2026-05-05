@@ -46,7 +46,9 @@
       "PowerShell(Move-Item -Path \"f:\\\\project\\\\code-agent\\\\openspec\\\\changes\\\\fix-scroll-follow-and-trace-controls\" -Destination \"f:\\\\project\\\\code-agent\\\\openspec\\\\changes\\\\archive\\\\2026-05-05-fix-scroll-follow-and-trace-controls\")",
       "PowerShell(Copy-Item -Path \"f:\\\\project\\\\code-agent\\\\openspec\\\\changes\\\\archive\\\\2026-05-05-fix-scroll-follow-and-trace-controls\\\\specs\\\\trace-window-controls\" -Destination \"f:\\\\project\\\\code-agent\\\\openspec\\\\specs\\\\trace-window-controls\" -Recurse)",
       "Bash(Get-ChildItem -Path \"f:\\\\project\\\\code-agent\" -Depth 0 -Name)",
-      "PowerShell(if \\(-not $?\\) { \"No .agent directory\" })"
+      "PowerShell(if \\(-not $?\\) { \"No .agent directory\" })",
+      "Bash(Get-ChildItem -Path \"f:\\\\project\\\\code-agent\\\\openspec\\\\changes\" -Directory)",
+      "Bash(Select-Object -ExpandProperty Name)"
     ],
     "additionalDirectories": [
       "F:\\project\\code-agent\\openspec\\changes\\multi-provider-api-config\\specs",

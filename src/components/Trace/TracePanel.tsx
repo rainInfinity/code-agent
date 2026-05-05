@@ -1,4 +1,11 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import styled from 'styled-components';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
@@ -16,6 +23,7 @@ import {
   FaXmark,
 } from 'react-icons/fa6';
 import { messages } from '@/i18n';
+import { FoldDivider } from '@/components/Chat/FoldDivider';
 import {
   emitTraceClearConversation,
   emitTracePinChanged,
@@ -23,6 +31,7 @@ import {
   setTraceDockingMode,
   setTraceAlwaysOnTop,
 } from '@/hooks/useIpc';
+import { useTurnFold } from '@/hooks/useTurnFold';
 import { useTraceIpc } from '@/hooks/useTraceIpc';
 import { useChatStore } from '@/stores/chatStore';
 import { useTraceStore } from '@/stores/traceStore';
@@ -38,6 +47,11 @@ const TRACE_FOLLOW_LATEST_LABEL = '\u8ddf\u968f\u6700\u65b0';
 const TRACE_PIN_AND_TOP_LABEL = '\u4fdd\u6301\u6253\u5f00\u5e76\u7f6e\u9876';
 
 const getTurnKey = (turn: TurnTrace) => `${turn.sessionId}-${turn.turnNumber}`;
+
+type FoldScrollRestore = {
+  scrollHeight: number;
+  scrollTop: number;
+};
 
 const Panel = styled.main`
   display: flex;
@@ -86,16 +100,20 @@ const WindowButton = styled.button<{ $danger?: boolean; $active?: boolean }>`
   width: 42px;
   height: 100%;
   border-left: 1px solid
-    ${({ $active, theme }) => ($active ? theme.colors.accentPrimary : 'transparent')};
+    ${({ $active, theme }) =>
+      $active ? theme.colors.accentPrimary : 'transparent'};
   color: ${({ $active, theme }) =>
     $active ? theme.colors.accentPrimaryHover : theme.colors.textSecondary};
-  background: ${({ $active, theme }) => ($active ? theme.colors.bgActive : 'transparent')};
-  transition: background-color ${({ theme }) => theme.transitions.fast},
+  background: ${({ $active, theme }) =>
+    $active ? theme.colors.bgActive : 'transparent'};
+  transition:
+    background-color ${({ theme }) => theme.transitions.fast},
     border-color ${({ theme }) => theme.transitions.fast},
     color ${({ theme }) => theme.transitions.fast};
 
   &:hover:not(:disabled) {
-    background: ${({ $danger, theme }) => ($danger ? theme.colors.error : theme.colors.bgHover)};
+    background: ${({ $danger, theme }) =>
+      $danger ? theme.colors.error : theme.colors.bgHover};
     color: ${({ $danger, theme }) =>
       $danger ? theme.colors.textInverse : theme.colors.textPrimary};
   }
@@ -132,8 +150,6 @@ const EmptyState = styled.div`
   font-size: ${({ theme }) => theme.typography.fontSize.sm};
 `;
 
-const EMPTY_TURNS: TurnTrace[] = [];
-
 export const TracePanel: React.FC = () => {
   useTraceIpc();
   const turnListRef = useRef<HTMLElement>(null);
@@ -141,6 +157,7 @@ export const TracePanel: React.FC = () => {
   const autoFollowRef = useRef(true);
   const skipScrollEventRef = useRef(false);
   const userScrollIntentUntilRef = useRef(0);
+  const pendingFoldScrollRestoreRef = useRef<FoldScrollRestore | null>(null);
   const previousConversationIdRef = useRef<string | null>(null);
   const previousLastTurnKeyRef = useRef<string | null>(null);
   const knownTurnKeysRef = useRef<Set<string>>(new Set());
@@ -152,19 +169,21 @@ export const TracePanel: React.FC = () => {
   const docking = useTraceStore((state) => state.docking);
   const setDocking = useTraceStore((state) => state.setDocking);
   const clearTurns = useTraceStore((state) => state.clearTurns);
-  const turns = useChatStore((state) =>
-    state.conversations.find((conversation) => conversation.id === conversationId)?.turns ?? EMPTY_TURNS,
-  );
+  const { turns, visibleTurns, foldInfo, loadMore, expandAll } =
+    useTurnFold(conversationId);
   const window = useMemo(() => getCurrentWindow(), []);
   const [isMaximized, setIsMaximized] = useState(false);
-  const [expandedTurnKeys, setExpandedTurnKeys] = useState<Set<string>>(() => new Set());
+  const [expandedTurnKeys, setExpandedTurnKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [followLatestOnly, setFollowLatestOnly] = useState(false);
   const currentTurn = turns[turns.length - 1];
   const isTraceRunning = currentTurn?.status === 'running';
   const turnKeys = useMemo(() => turns.map(getTurnKey), [turns]);
   const lastTurnKey = currentTurn ? getTurnKey(currentTurn) : null;
   const allTurnsExpanded =
-    turnKeys.length > 0 && turnKeys.every((turnKey) => expandedTurnKeys.has(turnKey));
+    turnKeys.length > 0 &&
+    turnKeys.every((turnKey) => expandedTurnKeys.has(turnKey));
   const expandCollapseLabel = allTurnsExpanded
     ? TRACE_COLLAPSE_ALL_LABEL
     : TRACE_EXPAND_ALL_LABEL;
@@ -175,9 +194,12 @@ export const TracePanel: React.FC = () => {
     return Math.max(0, el.scrollHeight - el.scrollTop - el.clientHeight);
   }, []);
 
-  const isNearBottom = useCallback((el: HTMLElement) => {
-    return getDistanceFromBottom(el) <= TRACE_AUTO_FOLLOW_BOTTOM_THRESHOLD_PX;
-  }, [getDistanceFromBottom]);
+  const isNearBottom = useCallback(
+    (el: HTMLElement) => {
+      return getDistanceFromBottom(el) <= TRACE_AUTO_FOLLOW_BOTTOM_THRESHOLD_PX;
+    },
+    [getDistanceFromBottom],
+  );
 
   const scrollTraceToBottom = useCallback(() => {
     const el = turnListRef.current;
@@ -197,7 +219,8 @@ export const TracePanel: React.FC = () => {
     }
 
     const distanceFromBottom = getDistanceFromBottom(el);
-    const isAtBottomRange = distanceFromBottom <= TRACE_AUTO_FOLLOW_BOTTOM_THRESHOLD_PX;
+    const isAtBottomRange =
+      distanceFromBottom <= TRACE_AUTO_FOLLOW_BOTTOM_THRESHOLD_PX;
     const hasUserScrollIntent = Date.now() < userScrollIntentUntilRef.current;
 
     if (isAtBottomRange) {
@@ -207,34 +230,65 @@ export const TracePanel: React.FC = () => {
     }
   }, [followLatestOnly, getDistanceFromBottom, isTraceRunning]);
 
-  const syncTraceScrollInFrame = useCallback((force = false) => {
-    globalThis.window.requestAnimationFrame(() => {
-      const el = turnListRef.current;
-      const shouldFollow = force || autoFollowRef.current || (el ? isNearBottom(el) : false);
+  const syncTraceScrollInFrame = useCallback(
+    (force = false) => {
+      globalThis.window.requestAnimationFrame(() => {
+        const el = turnListRef.current;
+        const shouldFollow =
+          force || autoFollowRef.current || (el ? isNearBottom(el) : false);
 
-      if (shouldFollow) {
-        autoFollowRef.current = true;
-        skipScrollEventRef.current = true;
-        scrollTraceToBottom();
-        globalThis.window.requestAnimationFrame(() => {
-          skipScrollEventRef.current = false;
+        if (shouldFollow) {
+          autoFollowRef.current = true;
+          skipScrollEventRef.current = true;
+          scrollTraceToBottom();
+          globalThis.window.requestAnimationFrame(() => {
+            skipScrollEventRef.current = false;
+            updateAutoFollowState();
+          });
+        } else {
           updateAutoFollowState();
-        });
-      } else {
-        updateAutoFollowState();
-      }
-    });
-  }, [isNearBottom, scrollTraceToBottom, updateAutoFollowState]);
+        }
+      });
+    },
+    [isNearBottom, scrollTraceToBottom, updateAutoFollowState],
+  );
 
   const markUserScrollIntent = useCallback(() => {
     skipScrollEventRef.current = false;
     userScrollIntentUntilRef.current = Date.now() + TRACE_USER_SCROLL_INTENT_MS;
   }, []);
 
-  const markScrollbarPointerIntent = useCallback((event: React.PointerEvent<HTMLElement>) => {
-    if (event.currentTarget !== event.target) return;
-    markUserScrollIntent();
-  }, [markUserScrollIntent]);
+  const captureFoldScrollRestore = useCallback(() => {
+    const el = turnListRef.current;
+    if (!el) return;
+
+    autoFollowRef.current = false;
+    pendingFoldScrollRestoreRef.current = {
+      scrollHeight: el.scrollHeight,
+      scrollTop: el.scrollTop,
+    };
+    userScrollIntentUntilRef.current = Date.now() + TRACE_USER_SCROLL_INTENT_MS;
+  }, []);
+
+  const markScrollbarPointerIntent = useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      if (event.currentTarget !== event.target) return;
+      markUserScrollIntent();
+    },
+    [markUserScrollIntent],
+  );
+
+  const handleLoadMoreTurns = useCallback(() => {
+    setFollowLatestOnly(false);
+    captureFoldScrollRestore();
+    loadMore();
+  }, [captureFoldScrollRestore, loadMore]);
+
+  const handleExpandAllTurns = useCallback(() => {
+    setFollowLatestOnly(false);
+    captureFoldScrollRestore();
+    expandAll();
+  }, [captureFoldScrollRestore, expandAll]);
 
   const toggleAllTurnsExpanded = useCallback(() => {
     setFollowLatestOnly(false);
@@ -309,11 +363,32 @@ export const TracePanel: React.FC = () => {
   }, [followLatestOnly, lastTurnKey, syncTraceScrollInFrame]);
 
   useLayoutEffect(() => {
-    const conversationChanged = previousConversationIdRef.current !== conversationId;
+    const pendingRestore = pendingFoldScrollRestoreRef.current;
+    const el = turnListRef.current;
+    if (!pendingRestore || !el) return;
+
+    pendingFoldScrollRestoreRef.current = null;
+    skipScrollEventRef.current = true;
+    el.scrollTop =
+      pendingRestore.scrollTop +
+      (el.scrollHeight - pendingRestore.scrollHeight);
+
+    const frameId = globalThis.window.requestAnimationFrame(() => {
+      skipScrollEventRef.current = false;
+      updateAutoFollowState();
+    });
+
+    return () => globalThis.window.cancelAnimationFrame(frameId);
+  }, [updateAutoFollowState, visibleTurns.length]);
+
+  useLayoutEffect(() => {
+    const conversationChanged =
+      previousConversationIdRef.current !== conversationId;
     const lastTurnChanged = previousLastTurnKeyRef.current !== lastTurnKey;
 
     if (conversationChanged || lastTurnChanged) {
       autoFollowRef.current = true;
+      pendingFoldScrollRestoreRef.current = null;
       syncTraceScrollInFrame(true);
     }
 
@@ -456,7 +531,10 @@ export const TracePanel: React.FC = () => {
   return (
     <Panel>
       <Header>
-        <DragSurface onMouseDown={startDragging} onDoubleClick={handleDoubleClick}>
+        <DragSurface
+          onMouseDown={startDragging}
+          onDoubleClick={handleDoubleClick}
+        >
           <Title>{messages.trace.title}</Title>
         </DragSurface>
         <WindowControls onMouseDown={stopDrag} onDoubleClick={stopDrag}>
@@ -469,7 +547,11 @@ export const TracePanel: React.FC = () => {
             aria-pressed={allTurnsExpanded}
             onClick={toggleAllTurnsExpanded}
           >
-            {allTurnsExpanded ? <FaChevronUp size={13} /> : <FaChevronDown size={13} />}
+            {allTurnsExpanded ? (
+              <FaChevronUp size={13} />
+            ) : (
+              <FaChevronDown size={13} />
+            )}
           </WindowButton>
           <WindowButton
             type="button"
@@ -516,8 +598,16 @@ export const TracePanel: React.FC = () => {
             type="button"
             $active={pinAndTopActive}
             disabled={isDocked}
-            title={isDocked ? messages.trace.alwaysOnTopForcedByDocking : TRACE_PIN_AND_TOP_LABEL}
-            aria-label={isDocked ? messages.trace.alwaysOnTopForcedByDocking : TRACE_PIN_AND_TOP_LABEL}
+            title={
+              isDocked
+                ? messages.trace.alwaysOnTopForcedByDocking
+                : TRACE_PIN_AND_TOP_LABEL
+            }
+            aria-label={
+              isDocked
+                ? messages.trace.alwaysOnTopForcedByDocking
+                : TRACE_PIN_AND_TOP_LABEL
+            }
             aria-pressed={pinAndTopActive}
             onClick={togglePinAndAlwaysOnTop}
           >
@@ -535,8 +625,16 @@ export const TracePanel: React.FC = () => {
           <WindowButton
             type="button"
             disabled={isDocked}
-            title={isDocked ? messages.trace.minimizeDisabledWhenDocked : messages.trace.minimizeTrace}
-            aria-label={isDocked ? messages.trace.minimizeDisabledWhenDocked : messages.trace.minimizeTrace}
+            title={
+              isDocked
+                ? messages.trace.minimizeDisabledWhenDocked
+                : messages.trace.minimizeTrace
+            }
+            aria-label={
+              isDocked
+                ? messages.trace.minimizeDisabledWhenDocked
+                : messages.trace.minimizeTrace
+            }
             onClick={() => {
               if (isDocked) return;
               window.minimize().catch(() => {});
@@ -598,17 +696,30 @@ export const TracePanel: React.FC = () => {
           {turns.length === 0 ? (
             <EmptyState>{messages.trace.waiting}</EmptyState>
           ) : (
-            turns.map((turn) => {
-              const turnKey = getTurnKey(turn);
-              return (
-                <TurnCard
-                  key={turnKey}
-                  turn={turn}
-                  expanded={expandedTurnKeys.has(turnKey)}
-                  onExpandedChange={(expanded) => setTurnExpanded(turnKey, expanded)}
+            <>
+              {foldInfo.isFolded ? (
+                <FoldDivider
+                  foldedTurnCount={foldInfo.foldedTurnCount}
+                  estimatedTokens={foldInfo.hiddenTokenCount}
+                  loadMoreTurns={foldInfo.loadMoreTurnCount}
+                  onLoadMore={handleLoadMoreTurns}
+                  onExpandAll={handleExpandAllTurns}
                 />
-              );
-            })
+              ) : null}
+              {visibleTurns.map((turn) => {
+                const turnKey = getTurnKey(turn);
+                return (
+                  <TurnCard
+                    key={turnKey}
+                    turn={turn}
+                    expanded={expandedTurnKeys.has(turnKey)}
+                    onExpandedChange={(expanded) =>
+                      setTurnExpanded(turnKey, expanded)
+                    }
+                  />
+                );
+              })}
+            </>
           )}
         </TurnListContent>
       </TurnList>

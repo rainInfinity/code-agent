@@ -49,6 +49,8 @@ interface ChatState {
   // Trace pin state
   isTracePinned: boolean;
   setTracePinned: (isPinned: boolean) => void;
+  isTraceDocked: boolean;
+  setTraceDocked: (isDocked: boolean) => void;
 }
 
 function normalizePersistedConversations(conversations: Conversation[]): Conversation[] {
@@ -297,6 +299,10 @@ export const useChatStore = create<ChatState>()(
       isTracePinned: false,
 
       setTracePinned: (isPinned: boolean) => set({ isTracePinned: isPinned }),
+
+      isTraceDocked: false,
+
+      setTraceDocked: (isDocked: boolean) => set({ isTraceDocked: isDocked }),
     }),
     {
       // Trace window uses a separate persist key to avoid overwriting
@@ -308,6 +314,7 @@ export const useChatStore = create<ChatState>()(
         conversations: normalizePersistedConversations(state.conversations),
         activeConversationId: state.activeConversationId,
         isTracePinned: state.isTracePinned,
+        isTraceDocked: state.isTraceDocked,
       }),
       merge: (persisted, current) => {
         const saved = persisted as Partial<ChatState>;
@@ -325,6 +332,7 @@ export const useChatStore = create<ChatState>()(
           isStreaming: false,
           streamingMessageId: null,
           isTracePinned: saved.isTracePinned ?? false,
+          isTraceDocked: saved.isTraceDocked ?? false,
         };
       },
     },

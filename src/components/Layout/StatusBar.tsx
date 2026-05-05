@@ -10,6 +10,7 @@ import {
   hideTraceWindow,
   isTraceWindowOpen,
   onTraceClearConversation,
+  onTraceDockingChanged,
   onTracePinChanged,
   onTraceWindowClosed,
   onTraceWindowReady,
@@ -90,6 +91,7 @@ export const StatusBar: React.FC = () => {
   const setConversationTraceEnabled = useChatStore((s) => s.setConversationTraceEnabled);
   const isPinned = useChatStore((s) => s.isTracePinned);
   const setPinned = useTraceStore((s) => s.setPinned);
+  const setTraceDocked = useChatStore((s) => s.setTraceDocked);
   const [traceOpen, setTraceOpen] = useState(false);
   const previousConversationIdRef = useRef<string | null>(activeConversationId);
 
@@ -99,6 +101,7 @@ export const StatusBar: React.FC = () => {
     let unlistenPin: (() => void) | undefined;
     let unlistenReady: (() => void) | undefined;
     let unlistenClear: (() => void) | undefined;
+    let unlistenDocking: (() => void) | undefined;
 
     isTraceWindowOpen()
       .then((open) => {
@@ -130,6 +133,16 @@ export const StatusBar: React.FC = () => {
       })
       .catch(() => {
         unlistenPin = undefined;
+      });
+
+    onTraceDockingChanged((event) => {
+      setTraceDocked(event.isDocked);
+    })
+      .then((cleanup) => {
+        unlistenDocking = cleanup;
+      })
+      .catch(() => {
+        unlistenDocking = undefined;
       });
 
     onTraceWindowReady(() => {
@@ -166,8 +179,9 @@ export const StatusBar: React.FC = () => {
       unlistenPin?.();
       unlistenReady?.();
       unlistenClear?.();
+      unlistenDocking?.();
     };
-  }, [setPinned]);
+  }, [setPinned, setTraceDocked]);
 
   useEffect(() => {
     if (!activeConversationId) {
@@ -184,7 +198,8 @@ export const StatusBar: React.FC = () => {
       if (cancelled) return;
 
       if (previousConversationId && previousConversationId !== activeConversationId && open) {
-        if (isPinned) {
+        const isTraceDocked = useChatStore.getState().isTraceDocked;
+        if (isPinned || isTraceDocked) {
           setConversationTraceEnabled(activeConversationId, true);
           await emitTraceConversationChanged(activeConversationId).catch(() => {});
           const conversations = useChatStore.getState().conversations;

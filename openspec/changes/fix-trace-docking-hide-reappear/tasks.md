@@ -18,3 +18,9 @@
 
 - [x] 4.1 `cargo check` 编译通过，无警告
 - [x] 4.2 验证 `window-state.json` 中旧数据（无 `hiddenWhileDocked` 字段）可正常反序列化
+
+## 5. 前端停靠状态同步（新增）
+
+- [x] 5.1 `useChatStore` 新增 `isTraceDocked` 字段（`chatStore.ts`）
+- [x] 5.2 主窗口 `StatusBar` 监听 `trace-docking-changed` 事件，同步 `isTraceDocked` 到 `chatStore`（`StatusBar.tsx`）
+- [x] 5.3 修改 `syncTraceWindow` 会话切换逻辑：`isDocked` 为 `true` 时不隐藏 Trace 窗口（`StatusBar.tsx`）
