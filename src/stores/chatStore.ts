@@ -9,6 +9,8 @@ function generateId(): string {
 
 const recentStreamDeltas = new Map<string, { delta: string; at: number }>();
 const DUPLICATE_DELTA_WINDOW_MS = 20;
+export const CHAT_HISTORY_STORAGE_KEY = 'code-agent-chat-history';
+export const TRACE_CHAT_HISTORY_STORAGE_KEY = 'code-agent-trace-chat-history';
 
 interface ChatState {
   conversations: Conversation[];
@@ -300,8 +302,8 @@ export const useChatStore = create<ChatState>()(
       // Trace window uses a separate persist key to avoid overwriting
       // the main window's conversations in shared localStorage.
       name: typeof window !== 'undefined' && window.location.search.includes('window=trace')
-        ? 'code-agent-trace-chat-history'
-        : 'code-agent-chat-history',
+        ? TRACE_CHAT_HISTORY_STORAGE_KEY
+        : CHAT_HISTORY_STORAGE_KEY,
       partialize: (state) => ({
         conversations: normalizePersistedConversations(state.conversations),
         activeConversationId: state.activeConversationId,

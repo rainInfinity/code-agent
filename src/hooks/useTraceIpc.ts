@@ -12,9 +12,92 @@ import {
   onTraceThinkingStart,
 } from '@/hooks/useIpc';
 import { useTraceStore } from '@/stores/traceStore';
-import { useChatStore } from '@/stores/chatStore';
+import { CHAT_HISTORY_STORAGE_KEY, useChatStore } from '@/stores/chatStore';
+import type { Conversation, TraceState } from '@/types';
 
 const TRACE_FLUSH_INTERVAL_MS = 50;
+
+const getAgentStatusFromTurns = (
+  turns: Conversation['turns'] | undefined,
+): TraceState['agentStatus'] => {
+  const latestTurn = turns?.[turns.length - 1];
+  if (!latestTurn) return 'idle';
+  return latestTurn.status;
+};
+
+const mergeSyncedConversations = (incoming: Conversation[]) => {
+  const existingById = new Map(
+    useChatStore.getState().conversations.map((conversation) => [conversation.id, conversation]),
+  );
+
+  return incoming.map((conversation) => {
+    const existing = existingById.get(conversation.id);
+    const incomingTurns = conversation.turns ?? [];
+    const existingTurns = existing?.turns ?? [];
+
+    if (incomingTurns.length === 0 && existingTurns.length > 0) {
+      return {
+        ...conversation,
+        turns: existingTurns,
+      };
+    }
+
+    return conversation;
+  });
+};
+
+type PersistedChatHistory = {
+  state?: {
+    conversations?: Conversation[];
+    activeConversationId?: string | null;
+  };
+};
+
+const readPersistedMainChatHistory = () => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(CHAT_HISTORY_STORAGE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as PersistedChatHistory;
+    return parsed.state ?? null;
+  } catch {
+    return null;
+  }
+};
+
+const syncTraceStateFromConversations = (conversationId: string | null) => {
+  const conversation = useChatStore
+    .getState()
+    .conversations.find((item) => item.id === conversationId);
+  const latestTurn = conversation?.turns?.[conversation.turns.length - 1];
+
+  useTraceStore.setState({
+    sessionId: latestTurn?.sessionId ?? null,
+    agentStatus: getAgentStatusFromTurns(conversation?.turns),
+  });
+};
+
+const hydrateTraceFromPersistedMainHistory = (preferredConversationId: string | null) => {
+  const persisted = readPersistedMainChatHistory();
+  if (!persisted?.conversations) return;
+
+  const conversations = mergeSyncedConversations(persisted.conversations);
+  useChatStore.setState({ conversations });
+
+  const currentConversationId =
+    preferredConversationId ??
+    useTraceStore.getState().conversationId ??
+    persisted.activeConversationId ??
+    null;
+
+  if (!useTraceStore.getState().conversationId && currentConversationId) {
+    useTraceStore.getState().reset(currentConversationId);
+  }
+
+  syncTraceStateFromConversations(currentConversationId);
+};
 
 export function useTraceIpc() {
   useEffect(() => {
@@ -64,10 +147,14 @@ export function useTraceIpc() {
 
     const install = async () => {
       cleanup = await Promise.all([
-        onTraceConversationChanged((event) => useTraceStore.getState().reset(event.conversationId)),
+        onTraceConversationChanged((event) => {
+          useTraceStore.getState().reset(event.conversationId);
+          syncTraceStateFromConversations(event.conversationId);
+        }),
         onTraceSyncConversations((event) => {
-          // Replace trace window's chatStore conversations with main window's data
-          useChatStore.setState({ conversations: event.conversations });
+          const conversations = mergeSyncedConversations(event.conversations);
+          useChatStore.setState({ conversations });
+          syncTraceStateFromConversations(useTraceStore.getState().conversationId);
         }),
         onAgentTurn((event) => useTraceStore.getState().startTurn(event)),
         onTracePrompt((event) => useTraceStore.getState().addPrompt(event)),
@@ -112,6 +199,7 @@ export function useTraceIpc() {
         // Always request full state sync from main window — the trace window
         // has its own localStorage (Tauri per-webview storage), so we need the
         // main window to send the actual conversations data.
+        hydrateTraceFromPersistedMainHistory(useTraceStore.getState().conversationId);
         emitTraceWindowReady().catch(() => {});
       })
       .catch(() => {

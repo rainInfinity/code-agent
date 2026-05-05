@@ -177,6 +177,16 @@ export async function onTraceConversationChanged(
   return listen<{ conversationId: string }>('trace-conversation-changed', (e) => callback(e.payload));
 }
 
+export async function emitTraceClearConversation(conversationId: string): Promise<void> {
+  return emit('trace-clear-conversation', { conversationId });
+}
+
+export async function onTraceClearConversation(
+  callback: (event: { conversationId: string }) => void,
+): Promise<UnlistenFn> {
+  return listen<{ conversationId: string }>('trace-clear-conversation', (e) => callback(e.payload));
+}
+
 export async function emitTracePinChanged(isPinned: boolean): Promise<void> {
   return emit('trace-pin-changed', { isPinned });
 }

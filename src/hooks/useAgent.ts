@@ -12,10 +12,21 @@ import {
   onToolCall,
   onToolResult,
   onTracePrompt,
+  onTraceThinkingEnd,
+  onTraceThinkingStart,
   onTraceWindowClosed,
   runAgent,
   stopAgent,
 } from '@/hooks/useIpc';
+import type {
+  AgentCompleteEvent,
+  AgentTurnEvent,
+  StreamEvent,
+  StreamThinkingEvent,
+  TracePromptEvent,
+  TraceThinkingEvent,
+  TurnTrace,
+} from '@/types';
 
 type AgentListenerRegistry = {
   installed: boolean;
@@ -101,6 +112,108 @@ function appendBufferedDelta(
   buffer.set(key, current);
 }
 
+function updateLatestTraceTurn(
+  conversationId: string,
+  updater: (turn: TurnTrace) => TurnTrace,
+) {
+  useChatStore.getState().updateLatestTurn(conversationId, updater);
+}
+
+function recordTraceTurnStart(event: AgentTurnEvent) {
+  useChatStore.getState().appendTurn(event.conversationId, {
+    turnNumber: event.turnCount,
+    sessionId: event.sessionId,
+    conversationId: event.conversationId,
+    startTime: Date.now(),
+    status: 'running',
+    thinking: {
+      content: '',
+      status: 'idle',
+    },
+    response: {
+      content: '',
+    },
+  });
+}
+
+function recordTracePrompt(event: TracePromptEvent) {
+  updateLatestTraceTurn(event.conversationId, (turn) => ({
+    ...turn,
+    prompt: {
+      systemPrompt: event.systemPrompt,
+      messages: event.messages,
+      tools: event.tools,
+    },
+  }));
+}
+
+function recordTraceThinkingStart(event: TraceThinkingEvent) {
+  updateLatestTraceTurn(event.conversationId, (turn) => ({
+    ...turn,
+    thinking: {
+      ...turn.thinking,
+      startTime: turn.thinking.startTime ?? Date.now(),
+      status: 'streaming',
+    },
+  }));
+}
+
+function recordTraceThinkingEnd(event: TraceThinkingEvent) {
+  updateLatestTraceTurn(event.conversationId, (turn) => ({
+    ...turn,
+    thinking: {
+      ...turn.thinking,
+      endTime: Date.now(),
+      status: turn.thinking.content ? 'complete' : 'idle',
+    },
+  }));
+}
+
+function recordTraceThinkingDelta(event: StreamThinkingEvent) {
+  updateLatestTraceTurn(event.conversationId, (turn) => ({
+    ...turn,
+    thinking: {
+      ...turn.thinking,
+      content: `${turn.thinking.content}${event.delta}`,
+      startTime: turn.thinking.startTime ?? Date.now(),
+      status: 'streaming',
+    },
+  }));
+}
+
+function recordTraceResponseDelta(event: StreamEvent) {
+  updateLatestTraceTurn(event.conversationId, (turn) => ({
+    ...turn,
+    response: {
+      ...turn.response,
+      content: `${turn.response.content}${event.delta}`,
+      startTime: turn.response.startTime ?? Date.now(),
+    },
+  }));
+}
+
+function recordTraceComplete(event: AgentCompleteEvent) {
+  const completedAt = Date.now();
+  updateLatestTraceTurn(event.conversationId, (turn) => ({
+    ...turn,
+    endTime: completedAt,
+    status: event.status === 'error' ? 'error' : 'complete',
+    thinking: {
+      ...turn.thinking,
+      status: turn.thinking.status === 'streaming' ? 'complete' : turn.thinking.status,
+      endTime: turn.thinking.endTime ?? completedAt,
+    },
+    response: {
+      ...turn.response,
+      endTime: completedAt,
+    },
+    usage: {
+      inputTokens: event.inputTokens,
+      outputTokens: event.outputTokens,
+    },
+  }));
+}
+
 function getAgentListenerRegistry(): AgentListenerRegistry {
   const target = globalThis as typeof globalThis & {
     [agentListenerRegistryKey]?: AgentListenerRegistry;
@@ -133,6 +246,7 @@ function ensureAgentListeners() {
           event.delta,
           (conversationId, messageId, delta) => {
             useChatStore.getState().appendToMessage(conversationId, messageId, delta);
+            recordTraceResponseDelta({ conversationId, messageId, delta });
           },
         );
       }),
@@ -144,6 +258,7 @@ function ensureAgentListeners() {
           event.delta,
           (conversationId, messageId, delta) => {
             useChatStore.getState().appendThinkingToMessage(conversationId, messageId, delta);
+            recordTraceThinkingDelta({ conversationId, messageId, delta });
           },
         );
       }),
@@ -153,13 +268,19 @@ function ensureAgentListeners() {
           streamDeltaBuffer,
           event.conversationId,
           event.messageId,
-          useChatStore.getState().appendToMessage,
+          (conversationId, messageId, delta) => {
+            useChatStore.getState().appendToMessage(conversationId, messageId, delta);
+            recordTraceResponseDelta({ conversationId, messageId, delta });
+          },
         );
         flushBufferedDelta(
           thinkingDeltaBuffer,
           event.conversationId,
           event.messageId,
-          useChatStore.getState().appendThinkingToMessage,
+          (conversationId, messageId, delta) => {
+            useChatStore.getState().appendThinkingToMessage(conversationId, messageId, delta);
+            recordTraceThinkingDelta({ conversationId, messageId, delta });
+          },
         );
         updateMessage(event.conversationId, event.messageId, {
           content: event.fullContent,
@@ -177,13 +298,19 @@ function ensureAgentListeners() {
           streamDeltaBuffer,
           event.conversationId,
           event.messageId,
-          useChatStore.getState().appendToMessage,
+          (conversationId, messageId, delta) => {
+            useChatStore.getState().appendToMessage(conversationId, messageId, delta);
+            recordTraceResponseDelta({ conversationId, messageId, delta });
+          },
         );
         flushBufferedDelta(
           thinkingDeltaBuffer,
           event.conversationId,
           event.messageId,
-          useChatStore.getState().appendThinkingToMessage,
+          (conversationId, messageId, delta) => {
+            useChatStore.getState().appendThinkingToMessage(conversationId, messageId, delta);
+            recordTraceThinkingDelta({ conversationId, messageId, delta });
+          },
         );
         updateMessage(event.conversationId, event.messageId, {
           content: event.error,
@@ -233,10 +360,11 @@ function ensureAgentListeners() {
           ],
         });
       }),
-      onTracePrompt(() => {
-        // Reserved for the trace window change.
-      }),
+      onTracePrompt(recordTracePrompt),
+      onTraceThinkingStart(recordTraceThinkingStart),
+      onTraceThinkingEnd(recordTraceThinkingEnd),
       onAgentTurn((event) => {
+        recordTraceTurnStart(event);
         useAgentStore.getState().setTurnCount(event.turnCount);
       }),
       onAgentComplete((event) => {
@@ -250,6 +378,7 @@ function ensureAgentListeners() {
             outputTokens: event.outputTokens,
           },
         });
+        recordTraceComplete(event);
         setStreaming(false);
         useAgentStore.getState().reset();
       }),

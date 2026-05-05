@@ -9,6 +9,7 @@ import {
   emitTraceSyncConversations,
   hideTraceWindow,
   isTraceWindowOpen,
+  onTraceClearConversation,
   onTracePinChanged,
   onTraceWindowClosed,
   onTraceWindowReady,
@@ -97,6 +98,7 @@ export const StatusBar: React.FC = () => {
     let unlisten: (() => void) | undefined;
     let unlistenPin: (() => void) | undefined;
     let unlistenReady: (() => void) | undefined;
+    let unlistenClear: (() => void) | undefined;
 
     isTraceWindowOpen()
       .then((open) => {
@@ -133,10 +135,10 @@ export const StatusBar: React.FC = () => {
     onTraceWindowReady(() => {
       const state = useChatStore.getState();
       const currentId = state.activeConversationId;
+      // Sync all conversations (with turns) to the trace window's chatStore
+      emitTraceSyncConversations(state.conversations).catch(() => {});
       if (currentId) {
         emitTraceConversationChanged(currentId).catch(() => {});
-        // Sync all conversations (with turns) to the trace window's chatStore
-        emitTraceSyncConversations(state.conversations).catch(() => {});
       }
     })
       .then((cleanup) => {
@@ -146,11 +148,24 @@ export const StatusBar: React.FC = () => {
         unlistenReady = undefined;
       });
 
+    onTraceClearConversation((event) => {
+      const store = useChatStore.getState();
+      store.clearConversationTurns(event.conversationId);
+      emitTraceSyncConversations(useChatStore.getState().conversations).catch(() => {});
+    })
+      .then((cleanup) => {
+        unlistenClear = cleanup;
+      })
+      .catch(() => {
+        unlistenClear = undefined;
+      });
+
     return () => {
       mounted = false;
       unlisten?.();
       unlistenPin?.();
       unlistenReady?.();
+      unlistenClear?.();
     };
   }, [setPinned]);
 

@@ -1,23 +1,39 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
   FaThumbtack,
-  FaArrowUp,
+  FaArrowDown,
   FaTrash,
+  FaChevronDown,
+  FaChevronUp,
   FaRegWindowMaximize,
   FaRegWindowMinimize,
   FaRegWindowRestore,
   FaXmark,
 } from 'react-icons/fa6';
 import { messages } from '@/i18n';
-import { emitTracePinChanged, hideTraceWindow, setTraceAlwaysOnTop } from '@/hooks/useIpc';
+import {
+  emitTraceClearConversation,
+  emitTracePinChanged,
+  hideTraceWindow,
+  setTraceAlwaysOnTop,
+} from '@/hooks/useIpc';
 import { useTraceIpc } from '@/hooks/useTraceIpc';
 import { useChatStore } from '@/stores/chatStore';
 import { useTraceStore } from '@/stores/traceStore';
 import type { TurnTrace } from '@/types';
 import { TraceStatusBar } from './TraceStatusBar';
 import { TurnCard } from './TurnCard';
+
+const TRACE_AUTO_FOLLOW_BOTTOM_THRESHOLD_PX = 150;
+const TRACE_USER_SCROLL_INTENT_MS = 650;
+const TRACE_COLLAPSE_ALL_LABEL = '\u5168\u90e8\u6536\u8d77';
+const TRACE_EXPAND_ALL_LABEL = '\u5168\u90e8\u6253\u5f00';
+const TRACE_FOLLOW_LATEST_LABEL = '\u8ddf\u968f\u6700\u65b0';
+const TRACE_PIN_AND_TOP_LABEL = '\u4fdd\u6301\u6253\u5f00\u5e76\u7f6e\u9876';
+
+const getTurnKey = (turn: TurnTrace) => `${turn.sessionId}-${turn.turnNumber}`;
 
 const Panel = styled.main`
   display: flex;
@@ -95,7 +111,12 @@ const TurnList = styled.section`
   flex: 1;
   min-height: 0;
   overflow: auto;
+  overflow-anchor: none;
   padding: ${({ theme }) => theme.spacing.md};
+`;
+
+const TurnListContent = styled.div`
+  min-height: 100%;
 `;
 
 const EmptyState = styled.div`
@@ -111,6 +132,14 @@ const EMPTY_TURNS: TurnTrace[] = [];
 
 export const TracePanel: React.FC = () => {
   useTraceIpc();
+  const turnListRef = useRef<HTMLElement>(null);
+  const turnListContentRef = useRef<HTMLDivElement>(null);
+  const autoFollowRef = useRef(true);
+  const skipScrollEventRef = useRef(false);
+  const userScrollIntentUntilRef = useRef(0);
+  const previousConversationIdRef = useRef<string | null>(null);
+  const previousLastTurnKeyRef = useRef<string | null>(null);
+  const knownTurnKeysRef = useRef<Set<string>>(new Set());
   const conversationId = useTraceStore((state) => state.conversationId);
   const isPinned = useChatStore((state) => state.isTracePinned);
   const setPinned = useTraceStore((state) => state.setPinned);
@@ -122,6 +151,232 @@ export const TracePanel: React.FC = () => {
   );
   const window = useMemo(() => getCurrentWindow(), []);
   const [isMaximized, setIsMaximized] = useState(false);
+  const [expandedTurnKeys, setExpandedTurnKeys] = useState<Set<string>>(() => new Set());
+  const [followLatestOnly, setFollowLatestOnly] = useState(false);
+  const currentTurn = turns[turns.length - 1];
+  const isTraceRunning = currentTurn?.status === 'running';
+  const turnKeys = useMemo(() => turns.map(getTurnKey), [turns]);
+  const lastTurnKey = currentTurn ? getTurnKey(currentTurn) : null;
+  const allTurnsExpanded =
+    turnKeys.length > 0 && turnKeys.every((turnKey) => expandedTurnKeys.has(turnKey));
+  const expandCollapseLabel = allTurnsExpanded
+    ? TRACE_COLLAPSE_ALL_LABEL
+    : TRACE_EXPAND_ALL_LABEL;
+  const pinAndTopActive = isPinned && alwaysOnTop;
+
+  const getDistanceFromBottom = useCallback((el: HTMLElement) => {
+    return Math.max(0, el.scrollHeight - el.scrollTop - el.clientHeight);
+  }, []);
+
+  const isNearBottom = useCallback((el: HTMLElement) => {
+    return getDistanceFromBottom(el) <= TRACE_AUTO_FOLLOW_BOTTOM_THRESHOLD_PX;
+  }, [getDistanceFromBottom]);
+
+  const scrollTraceToBottom = useCallback(() => {
+    const el = turnListRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, []);
+
+  const updateAutoFollowState = useCallback(() => {
+    if (skipScrollEventRef.current) return;
+
+    const el = turnListRef.current;
+    if (!el) return;
+
+    if (followLatestOnly) {
+      autoFollowRef.current = true;
+      return;
+    }
+
+    const distanceFromBottom = getDistanceFromBottom(el);
+    const isAtBottomRange = distanceFromBottom <= TRACE_AUTO_FOLLOW_BOTTOM_THRESHOLD_PX;
+    const hasUserScrollIntent = Date.now() < userScrollIntentUntilRef.current;
+
+    if (isAtBottomRange) {
+      autoFollowRef.current = true;
+    } else if (hasUserScrollIntent || !isTraceRunning) {
+      autoFollowRef.current = false;
+    }
+  }, [followLatestOnly, getDistanceFromBottom, isTraceRunning]);
+
+  const syncTraceScrollInFrame = useCallback((force = false) => {
+    globalThis.window.requestAnimationFrame(() => {
+      const el = turnListRef.current;
+      const shouldFollow = force || autoFollowRef.current || (el ? isNearBottom(el) : false);
+
+      if (shouldFollow) {
+        autoFollowRef.current = true;
+        skipScrollEventRef.current = true;
+        scrollTraceToBottom();
+        globalThis.window.requestAnimationFrame(() => {
+          skipScrollEventRef.current = false;
+          updateAutoFollowState();
+        });
+      } else {
+        updateAutoFollowState();
+      }
+    });
+  }, [isNearBottom, scrollTraceToBottom, updateAutoFollowState]);
+
+  const markUserScrollIntent = useCallback(() => {
+    skipScrollEventRef.current = false;
+    userScrollIntentUntilRef.current = Date.now() + TRACE_USER_SCROLL_INTENT_MS;
+  }, []);
+
+  const markScrollbarPointerIntent = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    if (event.currentTarget !== event.target) return;
+    markUserScrollIntent();
+  }, [markUserScrollIntent]);
+
+  const toggleAllTurnsExpanded = useCallback(() => {
+    setFollowLatestOnly(false);
+    setExpandedTurnKeys(allTurnsExpanded ? new Set() : new Set(turnKeys));
+  }, [allTurnsExpanded, turnKeys]);
+
+  const toggleFollowLatestTurn = useCallback(() => {
+    setFollowLatestOnly((current) => {
+      const next = !current;
+      if (next) {
+        setExpandedTurnKeys(lastTurnKey ? new Set([lastTurnKey]) : new Set());
+        autoFollowRef.current = true;
+        userScrollIntentUntilRef.current = 0;
+        syncTraceScrollInFrame(true);
+      }
+
+      return next;
+    });
+  }, [lastTurnKey, syncTraceScrollInFrame]);
+
+  const setTurnExpanded = useCallback((turnKey: string, expanded: boolean) => {
+    setFollowLatestOnly(false);
+    setExpandedTurnKeys((current) => {
+      const next = new Set(current);
+      if (expanded) {
+        next.add(turnKey);
+      } else {
+        next.delete(turnKey);
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const previousTurnKeys = knownTurnKeysRef.current;
+    const availableTurnKeys = new Set(turnKeys);
+    knownTurnKeysRef.current = availableTurnKeys;
+
+    setExpandedTurnKeys((current) => {
+      if (followLatestOnly) {
+        return lastTurnKey ? new Set([lastTurnKey]) : new Set();
+      }
+
+      let changed = false;
+      const next = new Set<string>();
+
+      current.forEach((turnKey) => {
+        if (availableTurnKeys.has(turnKey)) {
+          next.add(turnKey);
+        } else {
+          changed = true;
+        }
+      });
+
+      turnKeys.forEach((turnKey) => {
+        if (!previousTurnKeys.has(turnKey)) {
+          next.add(turnKey);
+          changed = true;
+        }
+      });
+
+      return changed ? next : current;
+    });
+  }, [followLatestOnly, lastTurnKey, turnKeys]);
+
+  useEffect(() => {
+    if (!followLatestOnly) return;
+
+    autoFollowRef.current = true;
+    userScrollIntentUntilRef.current = 0;
+    syncTraceScrollInFrame(true);
+  }, [followLatestOnly, lastTurnKey, syncTraceScrollInFrame]);
+
+  useLayoutEffect(() => {
+    const conversationChanged = previousConversationIdRef.current !== conversationId;
+    const lastTurnChanged = previousLastTurnKeyRef.current !== lastTurnKey;
+
+    if (conversationChanged || lastTurnChanged) {
+      autoFollowRef.current = true;
+      syncTraceScrollInFrame(true);
+    }
+
+    previousConversationIdRef.current = conversationId;
+    previousLastTurnKeyRef.current = lastTurnKey;
+  }, [conversationId, lastTurnKey, syncTraceScrollInFrame]);
+
+  useEffect(() => {
+    const listEl = turnListRef.current;
+    const contentEl = turnListContentRef.current;
+    if (!listEl && !contentEl) return;
+
+    const observer = new ResizeObserver(() => {
+      syncTraceScrollInFrame();
+    });
+
+    if (listEl) observer.observe(listEl);
+    if (contentEl) observer.observe(contentEl);
+
+    return () => observer.disconnect();
+  }, [syncTraceScrollInFrame]);
+
+  useEffect(() => {
+    if (!isTraceRunning) {
+      syncTraceScrollInFrame();
+      return;
+    }
+
+    let frameId: number | null = null;
+    let releaseSkipFrameId: number | null = null;
+
+    const releaseSkipScrollEvent = () => {
+      if (releaseSkipFrameId !== null) {
+        globalThis.window.cancelAnimationFrame(releaseSkipFrameId);
+      }
+
+      releaseSkipFrameId = globalThis.window.requestAnimationFrame(() => {
+        releaseSkipFrameId = null;
+        skipScrollEventRef.current = false;
+        updateAutoFollowState();
+      });
+    };
+
+    const keepPinnedToBottom = () => {
+      frameId = null;
+
+      const el = turnListRef.current;
+      const hasUserScrollIntent = Date.now() < userScrollIntentUntilRef.current;
+
+      if (el && autoFollowRef.current && !hasUserScrollIntent) {
+        skipScrollEventRef.current = true;
+        el.scrollTop = el.scrollHeight;
+        releaseSkipScrollEvent();
+      }
+
+      frameId = globalThis.window.requestAnimationFrame(keepPinnedToBottom);
+    };
+
+    frameId = globalThis.window.requestAnimationFrame(keepPinnedToBottom);
+
+    return () => {
+      if (frameId !== null) {
+        globalThis.window.cancelAnimationFrame(frameId);
+      }
+      if (releaseSkipFrameId !== null) {
+        globalThis.window.cancelAnimationFrame(releaseSkipFrameId);
+      }
+      skipScrollEventRef.current = false;
+    };
+  }, [isTraceRunning, syncTraceScrollInFrame, updateAutoFollowState]);
 
   useEffect(() => {
     let cleanupResize: (() => void) | undefined;
@@ -168,21 +423,18 @@ export const TracePanel: React.FC = () => {
     event.stopPropagation();
   };
 
-  const togglePinned = () => {
-    const nextPinned = !isPinned;
-    setPinned(nextPinned);
-    emitTracePinChanged(nextPinned).catch(() => {});
-  };
-
-  const toggleAlwaysOnTop = () => {
-    const next = !alwaysOnTop;
+  const togglePinAndAlwaysOnTop = () => {
+    const next = !pinAndTopActive;
+    setPinned(next);
     setAlwaysOnTop(next);
+    emitTracePinChanged(next).catch(() => {});
     setTraceAlwaysOnTop(next).catch(() => {});
   };
 
   const clearCurrentTurns = () => {
     if (!conversationId) return;
     clearTurns(conversationId);
+    emitTraceClearConversation(conversationId).catch(() => {});
   };
 
   return (
@@ -194,23 +446,35 @@ export const TracePanel: React.FC = () => {
         <WindowControls onMouseDown={stopDrag} onDoubleClick={stopDrag}>
           <WindowButton
             type="button"
-            $active={isPinned}
-            title={messages.trace.pinTooltip}
-            aria-label={messages.trace.pinTooltip}
-            aria-pressed={isPinned}
-            onClick={togglePinned}
+            $active={allTurnsExpanded}
+            disabled={turns.length === 0}
+            title={expandCollapseLabel}
+            aria-label={expandCollapseLabel}
+            aria-pressed={allTurnsExpanded}
+            onClick={toggleAllTurnsExpanded}
           >
-            <FaThumbtack size={13} />
+            {allTurnsExpanded ? <FaChevronUp size={13} /> : <FaChevronDown size={13} />}
           </WindowButton>
           <WindowButton
             type="button"
-            $active={alwaysOnTop}
-            title={messages.trace.alwaysOnTopTooltip}
-            aria-label={messages.trace.alwaysOnTopTooltip}
-            aria-pressed={alwaysOnTop}
-            onClick={toggleAlwaysOnTop}
+            $active={followLatestOnly}
+            disabled={turns.length === 0}
+            title={TRACE_FOLLOW_LATEST_LABEL}
+            aria-label={TRACE_FOLLOW_LATEST_LABEL}
+            aria-pressed={followLatestOnly}
+            onClick={toggleFollowLatestTurn}
           >
-            <FaArrowUp size={13} />
+            <FaArrowDown size={13} />
+          </WindowButton>
+          <WindowButton
+            type="button"
+            $active={pinAndTopActive}
+            title={TRACE_PIN_AND_TOP_LABEL}
+            aria-label={TRACE_PIN_AND_TOP_LABEL}
+            aria-pressed={pinAndTopActive}
+            onClick={togglePinAndAlwaysOnTop}
+          >
+            <FaThumbtack size={13} />
           </WindowButton>
           <WindowButton
             type="button"
@@ -259,12 +523,32 @@ export const TracePanel: React.FC = () => {
         </WindowControls>
       </Header>
       <TraceStatusBar />
-      <TurnList>
-        {turns.length === 0 ? (
-          <EmptyState>{messages.trace.waiting}</EmptyState>
-        ) : (
-          turns.map((turn) => <TurnCard key={`${turn.sessionId}-${turn.turnNumber}`} turn={turn} />)
-        )}
+      <TurnList
+        ref={turnListRef}
+        onScroll={updateAutoFollowState}
+        onWheel={markUserScrollIntent}
+        onPointerDown={markScrollbarPointerIntent}
+        onTouchStart={markUserScrollIntent}
+        onKeyDown={markUserScrollIntent}
+        tabIndex={-1}
+      >
+        <TurnListContent ref={turnListContentRef}>
+          {turns.length === 0 ? (
+            <EmptyState>{messages.trace.waiting}</EmptyState>
+          ) : (
+            turns.map((turn) => {
+              const turnKey = getTurnKey(turn);
+              return (
+                <TurnCard
+                  key={turnKey}
+                  turn={turn}
+                  expanded={expandedTurnKeys.has(turnKey)}
+                  onExpandedChange={(expanded) => setTurnExpanded(turnKey, expanded)}
+                />
+              );
+            })
+          )}
+        </TurnListContent>
       </TurnList>
     </Panel>
   );

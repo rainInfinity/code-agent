@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import styled, { keyframes } from "styled-components";
 import { FaCheck, FaChevronDown, FaCopy, FaRobot, FaUser, FaXmark } from "react-icons/fa6";
@@ -8,15 +8,20 @@ import { MarkdownRenderer } from "./MarkdownRenderer";
 import { messages as appMessages } from "@/i18n";
 import type { Message, MessageRole, MessageStatus } from "@/types";
 
-const DISENGAGE_AUTO_FOLLOW_PX = 150;
-const REENGAGE_AUTO_FOLLOW_PX = 50;
+const AUTO_FOLLOW_BOTTOM_THRESHOLD_PX = 150;
 const BUTTON_SMOOTH_SCROLL_MS = 700;
 const MESSAGE_META_SEPARATOR = "\u001f";
+const USER_SCROLL_INTENT_MS = 650;
 
 type MessageMeta = {
   id: string;
   role: MessageRole;
   status: MessageStatus;
+};
+
+type ScrollSnapshot = {
+  distanceFromBottom: number;
+  hasScrollableOverflow: boolean;
 };
 
 const encodeMessageMeta = (message: MessageMeta) =>
@@ -63,6 +68,7 @@ const ListShell = styled.div`
 const ListContainer = styled.div<{ $isStreaming: boolean }>`
   height: 100%;
   overflow-y: auto;
+  overflow-anchor: none;
   padding: ${({ theme }) => theme.spacing.xl} 0;
   position: relative;
   scroll-behavior: ${({ $isStreaming }) => ($isStreaming ? "auto" : "smooth")};
@@ -117,6 +123,15 @@ const RoleName = styled.div`
 const MessageBody = styled.div`
   min-width: 0;
   min-height: 28px;
+`;
+
+const UserMessageText = styled.pre`
+  max-height: 360px;
+  overflow-y: auto;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: inherit;
 `;
 
 const MessageActions = styled.div<{ $role: string }>`
@@ -496,7 +511,7 @@ const ThinkingPanel: React.FC<{ message: Message }> = ({ message }) => {
   );
 };
 
-const MessageBodyContent: React.FC<{ message: Message }> = ({ message }) => {
+const MessageBodyContent: React.FC<{ message: Message; role: MessageRole }> = ({ message, role }) => {
   const { status, content, thinkingContent, toolCalls, toolResults } = message;
 
   if (status === "error") {
@@ -517,7 +532,11 @@ const MessageBodyContent: React.FC<{ message: Message }> = ({ message }) => {
         <ThinkingPanel message={message} />
       ) : null}
       {content ? (
-        <MarkdownRenderer content={content} isStreaming={status === "streaming"} />
+        role === "user" ? (
+          <UserMessageText>{content}</UserMessageText>
+        ) : (
+          <MarkdownRenderer content={content} isStreaming={status === "streaming"} />
+        )
       ) : null}
       {toolCalls?.map((toolCall) => (
         <ToolIndicator key={toolCall.id}>Running {toolCall.name}...</ToolIndicator>
@@ -576,7 +595,7 @@ const MessageItem: React.FC<MessageItemProps> = React.memo(({
             : appMessages.messages.roles.assistant}
         </RoleName>
         <MessageBody>
-          <MessageBodyContent message={message} />
+          <MessageBodyContent message={message} role={role} />
         </MessageBody>
         <MessageActions $role={role}>
           <CopyButton
@@ -609,13 +628,16 @@ export const MessageList: React.FC<MessageListProps> = ({ conversationId }) => {
   const listRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const autoFollowRef = useRef(true);
+  const skipScrollEventRef = useRef(false);
   const smoothScrollUntilRef = useRef(0);
   const smoothScrollTimeoutRef = useRef<number | null>(null);
   const scrollFrameRef = useRef<number | null>(null);
   const needsFollowUpScrollRef = useRef(false);
+  const userScrollIntentUntilRef = useRef(0);
+  const pendingScrollSnapshotRef = useRef<ScrollSnapshot | null>(null);
   const wasStreamingRef = useRef(false);
   const previousConversationIdRef = useRef<string | null>(null);
-  const previousLastMessageIdRef = useRef<string | null>(null);
+  const previousLastUserMessageIdRef = useRef<string | null>(null);
   const [copyState, setCopyState] = useState<Record<string, "success" | "error">>({});
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const activeConversationId = useChatStore((state) => state.activeConversationId);
@@ -630,9 +652,47 @@ export const MessageList: React.FC<MessageListProps> = ({ conversationId }) => {
   const messageCount = messageMeta.length;
   const isStreaming = messageMeta.some((message) => message.status === "streaming");
   const lastMessage = messageMeta[messageMeta.length - 1];
+  const lastUserMessage = [...messageMeta].reverse().find((message) => message.role === "user");
 
   const getDistanceFromBottom = useCallback((el: HTMLDivElement) => {
     return Math.max(0, el.scrollHeight - el.scrollTop - el.clientHeight);
+  }, []);
+
+  const isNearBottom = useCallback((el: HTMLDivElement) => {
+    return getDistanceFromBottom(el) <= AUTO_FOLLOW_BOTTOM_THRESHOLD_PX;
+  }, [getDistanceFromBottom]);
+
+  const getScrollSnapshot = useCallback((el: HTMLDivElement): ScrollSnapshot => {
+    return {
+      distanceFromBottom: getDistanceFromBottom(el),
+      hasScrollableOverflow: el.scrollHeight > el.clientHeight + 1,
+    };
+  }, [getDistanceFromBottom]);
+
+  const shouldFollowFromSnapshot = useCallback((snapshot: ScrollSnapshot | null) => {
+    return Boolean(
+      snapshot &&
+      (
+        !snapshot.hasScrollableOverflow ||
+        snapshot.distanceFromBottom <= AUTO_FOLLOW_BOTTOM_THRESHOLD_PX
+      ),
+    );
+  }, []);
+
+  const capturePendingScrollSnapshot = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+
+    const snapshot = getScrollSnapshot(el);
+    pendingScrollSnapshotRef.current = snapshot;
+    if (shouldFollowFromSnapshot(snapshot)) {
+      autoFollowRef.current = true;
+    }
+  }, [getScrollSnapshot, shouldFollowFromSnapshot]);
+
+  const markUserScrollIntent = useCallback(() => {
+    skipScrollEventRef.current = false;
+    userScrollIntentUntilRef.current = Date.now() + USER_SCROLL_INTENT_MS;
   }, []);
 
   const scrollToBottomInstant = useCallback((force = false) => {
@@ -646,6 +706,8 @@ export const MessageList: React.FC<MessageListProps> = ({ conversationId }) => {
   }, [isStreaming]);
 
   const updateScrollAffordance = useCallback(() => {
+    if (skipScrollEventRef.current) return;
+
     const el = listRef.current;
     if (!el) return;
 
@@ -656,14 +718,17 @@ export const MessageList: React.FC<MessageListProps> = ({ conversationId }) => {
     }
 
     const distanceFromBottom = getDistanceFromBottom(el);
-    if (distanceFromBottom > DISENGAGE_AUTO_FOLLOW_PX) {
-      autoFollowRef.current = false;
-    } else if (distanceFromBottom <= REENGAGE_AUTO_FOLLOW_PX) {
+    const isAtBottomRange = distanceFromBottom <= AUTO_FOLLOW_BOTTOM_THRESHOLD_PX;
+    const hasUserScrollIntent = Date.now() < userScrollIntentUntilRef.current;
+
+    if (isAtBottomRange) {
       autoFollowRef.current = true;
+    } else if (hasUserScrollIntent || !isStreaming) {
+      autoFollowRef.current = false;
     }
 
     setShowScrollToBottom(messageCount > 0 && !autoFollowRef.current);
-  }, [getDistanceFromBottom, messageCount]);
+  }, [getDistanceFromBottom, isStreaming, messageCount]);
 
   const copyMessage = useCallback(async (messageId: string, content: string) => {
     try {
@@ -702,23 +767,24 @@ export const MessageList: React.FC<MessageListProps> = ({ conversationId }) => {
     setShowScrollToBottom(false);
   }, [scrollToBottomInstant, updateScrollAffordance]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const conversationChanged = previousConversationIdRef.current !== targetConversationId;
-    const lastMessageChanged = previousLastMessageIdRef.current !== (lastMessage?.id ?? null);
-    const userSentMessage = lastMessageChanged && lastMessage?.role === "user";
+    const lastUserMessageChanged =
+      previousLastUserMessageIdRef.current !== (lastUserMessage?.id ?? null);
+    const userSentMessage = lastUserMessageChanged && Boolean(lastUserMessage);
 
     if (conversationChanged || userSentMessage) {
       autoFollowRef.current = true;
+      pendingScrollSnapshotRef.current = null;
       scrollToBottomInstant(true);
       setShowScrollToBottom(false);
     }
 
     previousConversationIdRef.current = targetConversationId ?? null;
-    previousLastMessageIdRef.current = lastMessage?.id ?? null;
+    previousLastUserMessageIdRef.current = lastUserMessage?.id ?? null;
   }, [
     targetConversationId,
-    lastMessage?.id,
-    lastMessage?.role,
+    lastUserMessage?.id,
     scrollToBottomInstant,
   ]);
 
@@ -730,31 +796,48 @@ export const MessageList: React.FC<MessageListProps> = ({ conversationId }) => {
 
     scrollFrameRef.current = window.requestAnimationFrame(() => {
       scrollFrameRef.current = null;
-      if (force || autoFollowRef.current) {
-        const previousHeight = listRef.current?.scrollHeight ?? 0;
-        scrollToBottomInstant(force);
-        const nextHeight = listRef.current?.scrollHeight ?? 0;
-        if (nextHeight !== previousHeight) {
-          scrollToBottomInstant(true);
+      try {
+        const el = listRef.current;
+        const pendingSnapshot = pendingScrollSnapshotRef.current;
+        pendingScrollSnapshotRef.current = null;
+        const shouldFollow =
+          force ||
+          autoFollowRef.current ||
+          shouldFollowFromSnapshot(pendingSnapshot) ||
+          (el ? isNearBottom(el) : false);
+
+        if (shouldFollow) {
+          autoFollowRef.current = true;
+          skipScrollEventRef.current = true;
+          const previousHeight = el?.scrollHeight ?? 0;
+          scrollToBottomInstant(force);
+          const nextHeight = listRef.current?.scrollHeight ?? 0;
+          if (nextHeight !== previousHeight) {
+            scrollToBottomInstant(true);
+          }
         }
+        if (needsFollowUpScrollRef.current) {
+          needsFollowUpScrollRef.current = false;
+          syncScrollInFrame();
+        }
+        updateScrollAffordance();
+      } finally {
+        skipScrollEventRef.current = false;
       }
-      if (needsFollowUpScrollRef.current) {
-        needsFollowUpScrollRef.current = false;
-        syncScrollInFrame();
-      }
-      updateScrollAffordance();
     });
-  }, [scrollToBottomInstant, updateScrollAffordance]);
+  }, [isNearBottom, scrollToBottomInstant, shouldFollowFromSnapshot, updateScrollAffordance]);
 
   useEffect(() => {
     const contentEl = contentRef.current;
-    if (!contentEl) return;
+    const listEl = listRef.current;
+    if (!contentEl && !listEl) return;
 
     const observer = new ResizeObserver(() => {
       syncScrollInFrame();
     });
 
-    observer.observe(contentEl);
+    if (contentEl) observer.observe(contentEl);
+    if (listEl) observer.observe(listEl);
     return () => observer.disconnect();
   }, [syncScrollInFrame]);
 
@@ -767,11 +850,16 @@ export const MessageList: React.FC<MessageListProps> = ({ conversationId }) => {
     return useChatStore.subscribe((state) => {
       const nextSignature = getStreamingScrollSignature(state, targetConversationId);
       if (nextSignature && nextSignature !== previousSignature) {
+        const el = listRef.current;
+        capturePendingScrollSnapshot();
+        if (el && isNearBottom(el)) {
+          autoFollowRef.current = true;
+        }
         syncScrollInFrame();
       }
       previousSignature = nextSignature;
     });
-  }, [targetConversationId, syncScrollInFrame]);
+  }, [capturePendingScrollSnapshot, isNearBottom, targetConversationId, syncScrollInFrame]);
 
   useEffect(() => {
     return () => {
@@ -784,6 +872,52 @@ export const MessageList: React.FC<MessageListProps> = ({ conversationId }) => {
       needsFollowUpScrollRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!isStreaming) return;
+
+    let frameId: number | null = null;
+    let releaseSkipFrameId: number | null = null;
+
+    const releaseSkipScrollEvent = () => {
+      if (releaseSkipFrameId !== null) {
+        window.cancelAnimationFrame(releaseSkipFrameId);
+      }
+
+      releaseSkipFrameId = window.requestAnimationFrame(() => {
+        releaseSkipFrameId = null;
+        skipScrollEventRef.current = false;
+        updateScrollAffordance();
+      });
+    };
+
+    const keepPinnedToBottom = () => {
+      frameId = null;
+
+      const el = listRef.current;
+      const hasUserScrollIntent = Date.now() < userScrollIntentUntilRef.current;
+
+      if (el && autoFollowRef.current && !hasUserScrollIntent) {
+        skipScrollEventRef.current = true;
+        el.scrollTop = el.scrollHeight;
+        releaseSkipScrollEvent();
+      }
+
+      frameId = window.requestAnimationFrame(keepPinnedToBottom);
+    };
+
+    frameId = window.requestAnimationFrame(keepPinnedToBottom);
+
+    return () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+      if (releaseSkipFrameId !== null) {
+        window.cancelAnimationFrame(releaseSkipFrameId);
+      }
+      skipScrollEventRef.current = false;
+    };
+  }, [isStreaming, updateScrollAffordance]);
 
   useEffect(() => {
     if (wasStreamingRef.current && !isStreaming) {
@@ -805,6 +939,10 @@ export const MessageList: React.FC<MessageListProps> = ({ conversationId }) => {
         ref={listRef}
         className="selectable"
         onScroll={updateScrollAffordance}
+        onWheel={markUserScrollIntent}
+        onPointerDown={markUserScrollIntent}
+        onTouchStart={markUserScrollIntent}
+        onKeyDown={markUserScrollIntent}
         $isStreaming={isStreaming}
       >
         <MessagesContent ref={contentRef}>

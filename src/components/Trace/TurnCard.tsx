@@ -8,6 +8,12 @@ import { PromptView } from './PromptView';
 import { ThinkingView } from './ThinkingView';
 import { ResponseView } from './ResponseView';
 
+type TurnCardProps = {
+  turn: TurnTrace;
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
+};
+
 const Card = styled.article`
   border: 1px solid ${({ theme }) => theme.colors.border};
   border-radius: ${({ theme }) => theme.borderRadius.md};
@@ -105,8 +111,7 @@ const formatStartTime = (timestamp: number) =>
     second: '2-digit',
   });
 
-export const TurnCard: React.FC<{ turn: TurnTrace }> = ({ turn }) => {
-  const [expanded, setExpanded] = useState(true);
+export const TurnCard: React.FC<TurnCardProps> = ({ turn, expanded, onExpandedChange }) => {
   const [elapsedMs, setElapsedMs] = useState(() => (turn.endTime ?? Date.now()) - turn.startTime);
   const Chevron = expanded ? FaChevronDown : FaChevronRight;
   const hasUsage =
@@ -127,7 +132,7 @@ export const TurnCard: React.FC<{ turn: TurnTrace }> = ({ turn }) => {
 
   return (
     <Card>
-      <Header type="button" onClick={() => setExpanded((value) => !value)}>
+      <Header type="button" onClick={() => onExpandedChange(!expanded)}>
         <Title>
           <Chevron />
           {messages.trace.turn(turn.turnNumber)}
