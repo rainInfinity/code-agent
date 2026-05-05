@@ -31,6 +31,12 @@ pub async fn open_trace_window(
     app: AppHandle,
     conversation_id: Option<String>,
 ) -> Result<(), String> {
+    let mut docking = crate::load_trace_docking_state(&app);
+    if docking.hidden_while_docked {
+        docking.hidden_while_docked = false;
+        crate::save_trace_docking_state(&app, docking);
+    }
+
     if let Some(trace) = app.get_webview_window(TRACE_WINDOW_LABEL) {
         trace.show().map_err(|e| e.to_string())?;
         crate::apply_trace_docking(&app)?;
@@ -78,6 +84,13 @@ pub async fn open_trace_window(
 pub fn hide_trace_window(app: AppHandle) -> Result<(), String> {
     if let Some(trace) = app.get_webview_window(TRACE_WINDOW_LABEL) {
         crate::save_trace_window_state(&app);
+
+        let mut docking = crate::load_trace_docking_state(&app);
+        if docking.side.is_some() {
+            docking.hidden_while_docked = true;
+            crate::save_trace_docking_state(&app, docking);
+        }
+
         trace.hide().map_err(|e| e.to_string())?;
         let _ = app.emit("trace-window-closed", ());
     }

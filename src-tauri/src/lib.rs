@@ -67,6 +67,8 @@ struct TraceDockingState {
     always_on_top: bool,
     #[serde(default)]
     hidden_with_main: bool,
+    #[serde(default)]
+    hidden_while_docked: bool,
 }
 
 impl Default for TraceDockingState {
@@ -77,6 +79,7 @@ impl Default for TraceDockingState {
             previous_always_on_top: None,
             always_on_top: false,
             hidden_with_main: false,
+            hidden_while_docked: false,
         }
     }
 }
@@ -225,13 +228,13 @@ fn restore_window_state(window: &WebviewWindow, state: &WindowState) {
     }
 }
 
-fn load_trace_docking_state(app: &AppHandle) -> TraceDockingState {
+pub(crate) fn load_trace_docking_state(app: &AppHandle) -> TraceDockingState {
     load_persisted_window_state(app)
         .map(|state| state.trace_docking)
         .unwrap_or_default()
 }
 
-fn save_trace_docking_state(app: &AppHandle, mut docking: TraceDockingState) {
+pub(crate) fn save_trace_docking_state(app: &AppHandle, mut docking: TraceDockingState) {
     docking.attached_width = clamp_trace_docking_width(docking.attached_width, None);
 
     let Some(path) = window_state_path(app) else {
@@ -379,6 +382,7 @@ pub fn set_trace_docking_side(
             docking.side = Some(side);
             docking.always_on_top = true;
             docking.hidden_with_main = false;
+            docking.hidden_while_docked = false;
             docking.attached_width = clamp_trace_docking_width(docking.attached_width, None);
             save_trace_docking_state(app, docking.clone());
             apply_trace_docking(app)?;
@@ -407,6 +411,7 @@ pub fn exit_trace_docking(app: &AppHandle) -> Result<(), String> {
     docking.previous_always_on_top = None;
     docking.always_on_top = restored_always_on_top;
     docking.hidden_with_main = false;
+    docking.hidden_while_docked = false;
     save_trace_docking_state(app, docking.clone());
 
     if let Some(trace) = app.get_webview_window(TRACE_WINDOW_LABEL) {
@@ -418,10 +423,10 @@ pub fn exit_trace_docking(app: &AppHandle) -> Result<(), String> {
         let _ = trace.set_max_size(None::<PhysicalSize<u32>>);
 
         let _ = restore_trace_window_state(app, &trace);
+        let _ = trace.show();
         trace
             .set_always_on_top(restored_always_on_top)
             .map_err(|e| e.to_string())?;
-        let _ = trace.show();
         let _ = trace.set_focus();
     }
 
@@ -493,8 +498,13 @@ pub fn apply_trace_docking(app: &AppHandle) -> Result<(), String> {
     );
     trace.set_position(position).map_err(|e| e.to_string())?;
 
-    trace.set_always_on_top(true).map_err(|e| e.to_string())?;
+    if docking.hidden_while_docked {
+        save_trace_docking_state(app, docking.clone());
+        return Ok(());
+    }
+
     let _ = trace.show();
+    trace.set_always_on_top(true).map_err(|e| e.to_string())?;
 
     docking.always_on_top = true;
     save_trace_docking_state(app, docking.clone());
@@ -740,4 +750,31 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deserialize_trace_docking_state_without_hidden_while_docked() {
+        let json = r#"{"side":"right","attachedWidth":450.0,"alwaysOnTop":true,"hiddenWithMain":false}"#;
+        let state: TraceDockingState = serde_json::from_str(json).unwrap();
+        assert_eq!(state.hidden_while_docked, false);
+        assert_eq!(state.side, Some(TraceDockingSide::Right));
+        assert_eq!(state.attached_width, 450.0);
+    }
+
+    #[test]
+    fn deserialize_trace_docking_state_with_hidden_while_docked_true() {
+        let json = r#"{"side":"left","attachedWidth":500.0,"alwaysOnTop":true,"hiddenWithMain":false,"hiddenWhileDocked":true}"#;
+        let state: TraceDockingState = serde_json::from_str(json).unwrap();
+        assert_eq!(state.hidden_while_docked, true);
+    }
+
+    #[test]
+    fn default_hidden_while_docked_is_false() {
+        let state = TraceDockingState::default();
+        assert!(!state.hidden_while_docked);
+    }
 }
