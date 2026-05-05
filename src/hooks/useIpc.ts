@@ -15,6 +15,8 @@ import type {
   ToolResultEvent,
   TracePromptEvent,
   TraceThinkingEvent,
+  TraceDockingSide,
+  TraceDockingState,
   AgentTurnEvent,
   AgentCompleteEvent,
 } from '@/types';
@@ -73,6 +75,32 @@ export async function isTraceWindowOpen(): Promise<boolean> {
 
 export async function setTraceAlwaysOnTop(alwaysOnTop: boolean): Promise<void> {
   return invoke('set_trace_always_on_top', { alwaysOnTop });
+}
+
+export async function getTraceDockingState(): Promise<TraceDockingState> {
+  return invoke('get_trace_docking_state');
+}
+
+export async function setTraceDockingMode(
+  side: TraceDockingSide | null,
+): Promise<TraceDockingState> {
+  return invoke('set_trace_docking_mode', { side });
+}
+
+export async function exitTraceDocking(): Promise<TraceDockingState> {
+  return invoke('exit_trace_docking');
+}
+
+export async function syncTraceDockingWidth(width?: number): Promise<TraceDockingState> {
+  return invoke('sync_trace_docking_width', { width: width ?? null });
+}
+
+export async function syncTraceDockingToMain(): Promise<TraceDockingState> {
+  return invoke('sync_trace_docking_to_main');
+}
+
+export async function hideTraceForMainMinimize(): Promise<void> {
+  return invoke('hide_trace_for_main_minimize');
 }
 
 /** Save settings to the Rust backend */
@@ -165,6 +193,12 @@ export async function onTraceThinkingEnd(
 
 export async function onTraceWindowClosed(callback: () => void): Promise<UnlistenFn> {
   return listen('trace-window-closed', () => callback());
+}
+
+export async function onTraceDockingChanged(
+  callback: (event: TraceDockingState) => void,
+): Promise<UnlistenFn> {
+  return listen<TraceDockingState>('trace-docking-changed', (e) => callback(e.payload));
 }
 
 export async function emitTraceConversationChanged(conversationId: string): Promise<void> {

@@ -14,6 +14,13 @@ export const useTraceStore = create<TraceState>((set) => ({
   sessionId: null,
   isPinned: useChatStore.getState().isTracePinned,
   alwaysOnTop: false,
+  docking: {
+    side: null,
+    attachedWidth: 420,
+    isDocked: false,
+    alwaysOnTop: false,
+    alwaysOnTopForced: false,
+  },
   agentStatus: 'idle',
 
   setPinned: (isPinned) => {
@@ -22,6 +29,12 @@ export const useTraceStore = create<TraceState>((set) => ({
   },
 
   setAlwaysOnTop: (alwaysOnTop) => set({ alwaysOnTop }),
+
+  setDocking: (docking) =>
+    set({
+      docking,
+      alwaysOnTop: docking.alwaysOnTop,
+    }),
 
   startTurn: (event) => {
     useChatStore.getState().appendTurn(event.conversationId, {

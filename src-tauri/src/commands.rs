@@ -4,6 +4,7 @@ use crate::models::*;
 use crate::prompt::{collect_session_context, PromptEngine};
 use crate::providers::{built_in_provider_ids, default_endpoint, default_model};
 use crate::tools::ToolRegistry;
+use crate::{TraceDockingSide, TraceDockingSnapshot};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -13,8 +14,8 @@ use tokio_util::sync::CancellationToken;
 
 const SETTINGS_FILE: &str = "settings.json";
 const TRACE_WINDOW_LABEL: &str = "trace";
-const TRACE_WINDOW_WIDTH: f64 = 420.0;
-const TRACE_WINDOW_MIN_WIDTH: f64 = 320.0;
+const TRACE_WINDOW_WIDTH: f64 = 600.0;
+const TRACE_WINDOW_MIN_WIDTH: f64 = 580.0;
 const TRACE_WINDOW_MIN_HEIGHT: f64 = 400.0;
 
 /// Application state holding settings
@@ -32,6 +33,7 @@ pub async fn open_trace_window(
 ) -> Result<(), String> {
     if let Some(trace) = app.get_webview_window(TRACE_WINDOW_LABEL) {
         trace.show().map_err(|e| e.to_string())?;
+        crate::apply_trace_docking(&app)?;
         trace.set_focus().map_err(|e| e.to_string())?;
         return Ok(());
     }
@@ -67,6 +69,7 @@ pub async fn open_trace_window(
     }
 
     crate::setup_trace_window_state(&app, &trace);
+    crate::apply_trace_docking(&app)?;
 
     Ok(())
 }
@@ -84,11 +87,53 @@ pub fn hide_trace_window(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn set_trace_always_on_top(app: AppHandle, always_on_top: bool) -> Result<(), String> {
     if let Some(trace) = app.get_webview_window(TRACE_WINDOW_LABEL) {
+        let snapshot = crate::set_trace_always_on_top_state(&app, always_on_top);
+        if snapshot.always_on_top_forced && !always_on_top {
+            return Ok(());
+        }
         trace
             .set_always_on_top(always_on_top)
             .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[tauri::command]
+pub fn get_trace_docking_state(app: AppHandle) -> TraceDockingSnapshot {
+    crate::trace_docking_state(&app)
+}
+
+#[tauri::command]
+pub fn set_trace_docking_mode(
+    app: AppHandle,
+    side: Option<TraceDockingSide>,
+) -> Result<TraceDockingSnapshot, String> {
+    crate::set_trace_docking_side(&app, side)
+}
+
+#[tauri::command]
+pub fn exit_trace_docking(app: AppHandle) -> Result<TraceDockingSnapshot, String> {
+    crate::exit_trace_docking(&app)?;
+    Ok(crate::trace_docking_state(&app))
+}
+
+#[tauri::command]
+pub fn sync_trace_docking_width(
+    app: AppHandle,
+    width: Option<f64>,
+) -> Result<TraceDockingSnapshot, String> {
+    crate::sync_trace_docking_width(&app, width)
+}
+
+#[tauri::command]
+pub fn sync_trace_docking_to_main(app: AppHandle) -> Result<TraceDockingSnapshot, String> {
+    crate::apply_trace_docking(&app)?;
+    Ok(crate::trace_docking_state(&app))
+}
+
+#[tauri::command]
+pub fn hide_trace_for_main_minimize(app: AppHandle) -> Result<(), String> {
+    crate::hide_trace_for_main_minimize(&app)
 }
 
 #[tauri::command]

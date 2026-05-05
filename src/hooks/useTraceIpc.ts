@@ -1,11 +1,13 @@
 import { useEffect } from 'react';
 import {
   emitTraceWindowReady,
+  getTraceDockingState,
   onAgentComplete,
   onAgentTurn,
   onStreamDelta,
   onThinkingDelta,
   onTraceConversationChanged,
+  onTraceDockingChanged,
   onTracePrompt,
   onTraceSyncConversations,
   onTraceThinkingEnd,
@@ -156,6 +158,7 @@ export function useTraceIpc() {
           useChatStore.setState({ conversations });
           syncTraceStateFromConversations(useTraceStore.getState().conversationId);
         }),
+        onTraceDockingChanged((event) => useTraceStore.getState().setDocking(event)),
         onAgentTurn((event) => useTraceStore.getState().startTurn(event)),
         onTracePrompt((event) => useTraceStore.getState().addPrompt(event)),
         onTraceThinkingStart((event) => useTraceStore.getState().startThinking(event)),
@@ -200,6 +203,9 @@ export function useTraceIpc() {
         // has its own localStorage (Tauri per-webview storage), so we need the
         // main window to send the actual conversations data.
         hydrateTraceFromPersistedMainHistory(useTraceStore.getState().conversationId);
+        getTraceDockingState()
+          .then((state) => useTraceStore.getState().setDocking(state))
+          .catch(() => {});
         emitTraceWindowReady().catch(() => {});
       })
       .catch(() => {

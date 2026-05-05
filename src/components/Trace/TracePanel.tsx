@@ -10,6 +10,9 @@ import {
   FaRegWindowMaximize,
   FaRegWindowMinimize,
   FaRegWindowRestore,
+  FaAlignLeft,
+  FaAlignRight,
+  FaWindowRestore,
   FaXmark,
 } from 'react-icons/fa6';
 import { messages } from '@/i18n';
@@ -17,6 +20,7 @@ import {
   emitTraceClearConversation,
   emitTracePinChanged,
   hideTraceWindow,
+  setTraceDockingMode,
   setTraceAlwaysOnTop,
 } from '@/hooks/useIpc';
 import { useTraceIpc } from '@/hooks/useTraceIpc';
@@ -90,7 +94,7 @@ const WindowButton = styled.button<{ $danger?: boolean; $active?: boolean }>`
     border-color ${({ theme }) => theme.transitions.fast},
     color ${({ theme }) => theme.transitions.fast};
 
-  &:hover {
+  &:hover:not(:disabled) {
     background: ${({ $danger, theme }) => ($danger ? theme.colors.error : theme.colors.bgHover)};
     color: ${({ $danger, theme }) =>
       $danger ? theme.colors.textInverse : theme.colors.textPrimary};
@@ -103,7 +107,7 @@ const WindowButton = styled.button<{ $danger?: boolean; $active?: boolean }>`
 
   &:disabled {
     cursor: default;
-    opacity: 0.45;
+    opacity: ${({ $active }) => ($active ? 1 : 0.45)};
   }
 `;
 
@@ -145,6 +149,8 @@ export const TracePanel: React.FC = () => {
   const setPinned = useTraceStore((state) => state.setPinned);
   const alwaysOnTop = useTraceStore((state) => state.alwaysOnTop);
   const setAlwaysOnTop = useTraceStore((state) => state.setAlwaysOnTop);
+  const docking = useTraceStore((state) => state.docking);
+  const setDocking = useTraceStore((state) => state.setDocking);
   const clearTurns = useTraceStore((state) => state.clearTurns);
   const turns = useChatStore((state) =>
     state.conversations.find((conversation) => conversation.id === conversationId)?.turns ?? EMPTY_TURNS,
@@ -162,7 +168,8 @@ export const TracePanel: React.FC = () => {
   const expandCollapseLabel = allTurnsExpanded
     ? TRACE_COLLAPSE_ALL_LABEL
     : TRACE_EXPAND_ALL_LABEL;
-  const pinAndTopActive = isPinned && alwaysOnTop;
+  const isDocked = docking.isDocked;
+  const pinAndTopActive = isDocked || (isPinned && alwaysOnTop);
 
   const getDistanceFromBottom = useCallback((el: HTMLElement) => {
     return Math.max(0, el.scrollHeight - el.scrollTop - el.clientHeight);
@@ -411,11 +418,13 @@ export const TracePanel: React.FC = () => {
   };
 
   const toggleMaximize = async () => {
+    if (isDocked) return;
     await window.toggleMaximize();
     setIsMaximized(await window.isMaximized());
   };
 
   const handleDoubleClick = () => {
+    if (isDocked) return;
     toggleMaximize().catch(() => {});
   };
 
@@ -424,11 +433,18 @@ export const TracePanel: React.FC = () => {
   };
 
   const togglePinAndAlwaysOnTop = () => {
+    if (isDocked) return;
     const next = !pinAndTopActive;
     setPinned(next);
     setAlwaysOnTop(next);
     emitTracePinChanged(next).catch(() => {});
     setTraceAlwaysOnTop(next).catch(() => {});
+  };
+
+  const changeDockingMode = (side: 'left' | 'right' | null) => {
+    setTraceDockingMode(side)
+      .then((state) => setDocking(state))
+      .catch(() => {});
   };
 
   const clearCurrentTurns = () => {
@@ -468,9 +484,40 @@ export const TracePanel: React.FC = () => {
           </WindowButton>
           <WindowButton
             type="button"
+            $active={!isDocked}
+            title={messages.trace.dockDetached}
+            aria-label={messages.trace.dockDetached}
+            aria-pressed={!isDocked}
+            onClick={() => changeDockingMode(null)}
+          >
+            <FaWindowRestore size={13} />
+          </WindowButton>
+          <WindowButton
+            type="button"
+            $active={docking.side === 'left'}
+            title={messages.trace.dockLeft}
+            aria-label={messages.trace.dockLeft}
+            aria-pressed={docking.side === 'left'}
+            onClick={() => changeDockingMode('left')}
+          >
+            <FaAlignLeft size={13} />
+          </WindowButton>
+          <WindowButton
+            type="button"
+            $active={docking.side === 'right'}
+            title={messages.trace.dockRight}
+            aria-label={messages.trace.dockRight}
+            aria-pressed={docking.side === 'right'}
+            onClick={() => changeDockingMode('right')}
+          >
+            <FaAlignRight size={13} />
+          </WindowButton>
+          <WindowButton
+            type="button"
             $active={pinAndTopActive}
-            title={TRACE_PIN_AND_TOP_LABEL}
-            aria-label={TRACE_PIN_AND_TOP_LABEL}
+            disabled={isDocked}
+            title={isDocked ? messages.trace.alwaysOnTopForcedByDocking : TRACE_PIN_AND_TOP_LABEL}
+            aria-label={isDocked ? messages.trace.alwaysOnTopForcedByDocking : TRACE_PIN_AND_TOP_LABEL}
             aria-pressed={pinAndTopActive}
             onClick={togglePinAndAlwaysOnTop}
           >
@@ -487,9 +534,11 @@ export const TracePanel: React.FC = () => {
           </WindowButton>
           <WindowButton
             type="button"
-            title={messages.trace.minimizeTrace}
-            aria-label={messages.trace.minimizeTrace}
+            disabled={isDocked}
+            title={isDocked ? messages.trace.minimizeDisabledWhenDocked : messages.trace.minimizeTrace}
+            aria-label={isDocked ? messages.trace.minimizeDisabledWhenDocked : messages.trace.minimizeTrace}
             onClick={() => {
+              if (isDocked) return;
               window.minimize().catch(() => {});
             }}
           >
@@ -497,8 +546,21 @@ export const TracePanel: React.FC = () => {
           </WindowButton>
           <WindowButton
             type="button"
-            title={isMaximized ? messages.trace.restoreTrace : messages.trace.maximizeTrace}
-            aria-label={isMaximized ? messages.trace.restoreTrace : messages.trace.maximizeTrace}
+            disabled={isDocked}
+            title={
+              isDocked
+                ? messages.trace.maximizeDisabledWhenDocked
+                : isMaximized
+                  ? messages.trace.restoreTrace
+                  : messages.trace.maximizeTrace
+            }
+            aria-label={
+              isDocked
+                ? messages.trace.maximizeDisabledWhenDocked
+                : isMaximized
+                  ? messages.trace.restoreTrace
+                  : messages.trace.maximizeTrace
+            }
             onClick={() => {
               toggleMaximize().catch(() => {});
             }}

@@ -217,14 +217,26 @@ export interface ConversationTrace {
   turns: TurnTrace[];
 }
 
+export type TraceDockingSide = 'left' | 'right';
+
+export interface TraceDockingState {
+  side: TraceDockingSide | null;
+  attachedWidth: number;
+  isDocked: boolean;
+  alwaysOnTop: boolean;
+  alwaysOnTopForced: boolean;
+}
+
 export interface TraceState {
   conversationId: string | null;
   sessionId: string | null;
   isPinned: boolean;
   alwaysOnTop: boolean;
+  docking: TraceDockingState;
   agentStatus: 'idle' | 'running' | 'complete' | 'error';
   setPinned: (isPinned: boolean) => void;
   setAlwaysOnTop: (alwaysOnTop: boolean) => void;
+  setDocking: (docking: TraceDockingState) => void;
   startTurn: (event: AgentTurnEvent) => void;
   addPrompt: (event: TracePromptEvent) => void;
   startThinking: (event: TraceThinkingEvent) => void;

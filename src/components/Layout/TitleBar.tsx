@@ -12,6 +12,10 @@ import {
 } from 'react-icons/fa6';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
+  hideTraceForMainMinimize,
+  syncTraceDockingToMain,
+} from '@/hooks/useIpc';
+import {
   messages,
 } from '@/i18n';
 
@@ -198,6 +202,7 @@ export const TitleBar: React.FC = () => {
   useEffect(() => {
     let cleanupResize: (() => void) | undefined;
     let cleanupMove: (() => void) | undefined;
+    let cleanupFocus: (() => void) | undefined;
     let cancelled = false;
 
     const syncMaximizedState = async () => {
@@ -205,6 +210,7 @@ export const TitleBar: React.FC = () => {
       if (!cancelled) {
         setIsMaximized(maximized);
       }
+      syncTraceDockingToMain().catch(() => {});
     };
 
     syncMaximizedState();
@@ -214,11 +220,19 @@ export const TitleBar: React.FC = () => {
     window.onMoved(syncMaximizedState).then((unlisten) => {
       cleanupMove = unlisten;
     });
+    window.onFocusChanged(({ payload: focused }) => {
+      if (focused) {
+        syncTraceDockingToMain().catch(() => {});
+      }
+    }).then((unlisten) => {
+      cleanupFocus = unlisten;
+    });
 
     return () => {
       cancelled = true;
       cleanupResize?.();
       cleanupMove?.();
+      cleanupFocus?.();
     };
   }, [window]);
 
@@ -357,7 +371,13 @@ export const TitleBar: React.FC = () => {
       <WindowControls onMouseDown={stopDrag} onDoubleClick={stopDrag}>
         <WindowButton
           type="button"
-          onClick={() => window.minimize()}
+          onClick={() => {
+            hideTraceForMainMinimize()
+              .catch(() => {})
+              .finally(() => {
+                window.minimize().catch(() => {});
+              });
+          }}
           title={titleBarMessages.controls.minimize}
           aria-label={titleBarMessages.controls.minimize}
         >
