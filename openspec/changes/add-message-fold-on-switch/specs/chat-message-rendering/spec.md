@@ -1,35 +1,39 @@
 ## ADDED Requirements
 
-### Requirement: MessageList 支持历史消息折叠
+### Requirement: MessageList supports one-time automatic fold initialization
 
-MessageList 组件 SHALL 集成消息折叠机制。当对话轮次或内容长度超过阈值时，历史消息 SHALL NOT 渲染为 MessageItem 组件。折叠边界 SHALL 显示 FoldDivider 组件提供渐进式加载。
+MessageList SHALL integrate conversation-scoped fold state. For a long conversation, automatic folding SHALL happen only during that conversation's first load in the current chat view session.
 
-#### Scenario: 长对话切换时自动折叠
+#### Scenario: First render of a long conversation
 
-- **GIVEN** 对话包含 30 轮消息（60+ Message 对象）
-- **WHEN** 用户从侧边栏切换到该对话
-- **THEN** MessageList SHALL 仅渲染最近 N 轮的 MessageItem 组件
-- **AND** 折叠的消息 SHALL NOT 存在于 DOM 中（querySelector 无法找到折叠消息的元素）
-- **AND** FoldDivider SHALL 显示在第一个可见 MessageItem 上方
+- **GIVEN** a conversation contains enough history to cross the configured fold threshold
+- **WHEN** MessageList renders that conversation for the first time
+- **THEN** only the visible slice after the computed fold point SHALL render as `MessageItem`
+- **AND** folded messages SHALL NOT exist in the DOM
+- **AND** `FoldDivider` SHALL render above the first visible message
 
-#### Scenario: 短对话切换时全部渲染
+#### Scenario: Re-render after returning to the same conversation
 
-- **GIVEN** 对话包含 3 轮消息
-- **WHEN** 用户从侧边栏切换到该对话
-- **THEN** MessageList SHALL 渲染全部 3 轮消息
-- **AND** FoldDivider SHALL NOT 存在
+- **GIVEN** MessageList already initialized fold state for the conversation
+- **WHEN** the user later returns to that same conversation
+- **THEN** MessageList SHALL reuse the remembered visible slice
+- **AND** it SHALL NOT recalculate a fresh automatic fold from scratch
 
-#### Scenario: 加载更多后滚动位置保持
+### Requirement: MessageList preserves visible history during streaming growth
 
-- **GIVEN** 对话已折叠，用户滚动至中间位置查看可见消息
-- **WHEN** 用户点击"加载最近 5 轮"
-- **THEN** 新消息 SHALL 插入到折叠分割线原位置上方
-- **AND** 用户当前视口位置 SHALL 保持不变（内容不下跳也不上跳）
+MessageList SHALL preserve its current visible history while new streaming content is appended.
 
-#### Scenario: 流式输出中折叠行为
+#### Scenario: Streaming crosses the threshold after first load
 
-- **GIVEN** 长对话正在流式接收新消息
-- **WHEN** 流式 delta 持续更新最新消息内容
-- **THEN** 历史消息的折叠状态 SHALL NOT 改变
-- **AND** 最新消息 SHALL 始终在可见区域渲染
-- **AND** 自动滚动到底部的行为 SHALL 正常工作
+- **GIVEN** MessageList first rendered a conversation while it was still fully visible
+- **WHEN** later streaming replies make that conversation cross the configured threshold
+- **THEN** MessageList SHALL keep the already-visible history visible
+- **AND** it SHALL NOT automatically insert a new folded region
+
+#### Scenario: Streaming inside an already folded conversation
+
+- **GIVEN** MessageList already shows a folded divider
+- **WHEN** streaming deltas update the latest assistant message
+- **THEN** the folded region SHALL remain stable
+- **AND** the latest message SHALL remain visible
+- **AND** existing auto-follow and scroll-to-bottom behavior SHALL continue to work

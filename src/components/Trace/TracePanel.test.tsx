@@ -1,9 +1,10 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ThemeProvider } from 'styled-components';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { TracePanel } from './TracePanel';
+import { messages as appMessages } from '@/i18n';
 import { darkTheme } from '@/styles/theme';
 import { useChatStore } from '@/stores/chatStore';
 import { useTraceStore } from '@/stores/traceStore';
@@ -127,24 +128,185 @@ describe('TracePanel folding', () => {
     renderWithTheme(<TracePanel />);
 
     await waitFor(() => {
-      expect(screen.getByText('以上 7 轮对话未渲染')).toBeTruthy();
+      expect(screen.getByText(appMessages.fold.divider.title(12))).toBeTruthy();
     });
-    expect(screen.queryByText('Turn 1')).toBeNull();
-    expect(screen.getByText('Turn 17')).toBeTruthy();
+    expect(screen.queryByText(appMessages.trace.turn(1))).toBeNull();
+    expect(screen.getByText(appMessages.trace.turn(17))).toBeTruthy();
 
-    await user.click(screen.getByRole('button', { name: '加载最近 5 轮' }));
+    await user.click(
+      screen.getByRole('button', {
+        name: appMessages.fold.divider.loadMore(5),
+      }),
+    );
 
     await waitFor(() => {
-      expect(screen.getByText('以上 2 轮对话未渲染')).toBeTruthy();
+      expect(screen.getByText(appMessages.fold.divider.title(7))).toBeTruthy();
     });
-    expect(screen.getByText('Turn 3')).toBeTruthy();
-    expect(screen.queryByText('Turn 2')).toBeNull();
+    expect(screen.getByText(appMessages.trace.turn(8))).toBeTruthy();
+    expect(screen.queryByText(appMessages.trace.turn(7))).toBeNull();
 
-    await user.click(screen.getByRole('button', { name: '展开全部' }));
+    await user.click(
+      screen.getByRole('button', {
+        name: appMessages.fold.divider.expandAll,
+      }),
+    );
 
     await waitFor(() => {
-      expect(screen.queryByText(/未渲染/)).toBeNull();
+      expect(
+        screen.queryByRole('button', {
+          name: appMessages.fold.divider.expandAll,
+        }),
+      ).toBeNull();
     });
-    expect(screen.getByText('Turn 1')).toBeTruthy();
+    expect(screen.getByText(appMessages.trace.turn(1))).toBeTruthy();
+  });
+
+  test('restores remembered trace fold state when switching conversations', async () => {
+    const user = userEvent.setup();
+    const conversation = createConversation('trace-remembered', 17);
+    const otherConversation = createConversation('trace-other', 15);
+    useChatStore.setState({
+      conversations: [conversation, otherConversation],
+      activeConversationId: conversation.id,
+    });
+    useTraceStore.setState({
+      conversationId: conversation.id,
+      agentStatus: 'complete',
+    });
+
+    renderWithTheme(<TracePanel />);
+
+    await user.click(
+      screen.getByRole('button', {
+        name: appMessages.fold.divider.loadMore(5),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(appMessages.fold.divider.title(7))).toBeTruthy();
+    });
+    expect(screen.getByText(appMessages.trace.turn(8))).toBeTruthy();
+    expect(screen.queryByText(appMessages.trace.turn(7))).toBeNull();
+
+    useTraceStore.setState({
+      conversationId: otherConversation.id,
+      agentStatus: 'complete',
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(appMessages.fold.divider.title(10))).toBeTruthy();
+    });
+    expect(screen.queryByText(appMessages.trace.turn(1))).toBeNull();
+    expect(screen.getByText(appMessages.trace.turn(15))).toBeTruthy();
+
+    useTraceStore.setState({
+      conversationId: conversation.id,
+      agentStatus: 'complete',
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(appMessages.fold.divider.title(7))).toBeTruthy();
+    });
+    expect(screen.getByText(appMessages.trace.turn(8))).toBeTruthy();
+    expect(screen.queryByText(appMessages.trace.turn(7))).toBeNull();
+  });
+
+  test('keeps the folded trace boundary stable while new turns arrive', async () => {
+    const conversation = createConversation('trace-stream', 15);
+    useChatStore.setState({
+      conversations: [conversation],
+      activeConversationId: conversation.id,
+    });
+    useTraceStore.setState({
+      conversationId: conversation.id,
+      agentStatus: 'running',
+    });
+
+    renderWithTheme(<TracePanel />);
+
+    await waitFor(() => {
+      expect(screen.getByText(appMessages.fold.divider.title(10))).toBeTruthy();
+    });
+    expect(screen.queryByText(appMessages.trace.turn(1))).toBeNull();
+    expect(screen.getByText(appMessages.trace.turn(11))).toBeTruthy();
+
+    act(() => {
+      useChatStore.setState((state) => ({
+        conversations: state.conversations.map((item) =>
+          item.id === conversation.id
+            ? {
+                ...item,
+                turns: [
+                  ...item.turns,
+                  {
+                    ...createTurn(conversation.id, 16),
+                    status: 'running',
+                  },
+                ],
+              }
+            : item,
+        ),
+      }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(appMessages.fold.divider.title(10))).toBeTruthy();
+    });
+    expect(screen.queryByText(appMessages.trace.turn(1))).toBeNull();
+    expect(screen.getByText(appMessages.trace.turn(11))).toBeTruthy();
+    expect(screen.getByText(appMessages.trace.turn(16))).toBeTruthy();
+  });
+
+  test('does not auto-fold a trace when running updates cross the threshold later', async () => {
+    const conversation = createConversation('trace-threshold', 4);
+    useChatStore.setState({
+      conversations: [conversation],
+      activeConversationId: conversation.id,
+    });
+    useTraceStore.setState({
+      conversationId: conversation.id,
+      agentStatus: 'running',
+    });
+
+    renderWithTheme(<TracePanel />);
+
+    await waitFor(() => {
+      expect(screen.getByText(appMessages.trace.turn(1))).toBeTruthy();
+    });
+    expect(
+      screen.queryByRole('button', {
+        name: appMessages.fold.divider.expandAll,
+      }),
+    ).toBeNull();
+
+    act(() => {
+      useChatStore.setState((state) => ({
+        conversations: state.conversations.map((item) =>
+          item.id === conversation.id
+            ? {
+                ...item,
+                turns: [
+                  ...item.turns,
+                  createTurn(conversation.id, 5),
+                  {
+                    ...createTurn(conversation.id, 6),
+                    status: 'running',
+                  },
+                ],
+              }
+            : item,
+        ),
+      }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(appMessages.trace.turn(6))).toBeTruthy();
+    });
+    expect(screen.getByText(appMessages.trace.turn(1))).toBeTruthy();
+    expect(
+      screen.queryByRole('button', {
+        name: appMessages.fold.divider.expandAll,
+      }),
+    ).toBeNull();
   });
 });
