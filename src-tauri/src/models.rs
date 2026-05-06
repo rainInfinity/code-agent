@@ -1,11 +1,19 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+#[allow(unused_imports)]
+pub use crate::tools::{PermissionResult, RiskLevel, ToolContext, ToolMeta};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentBlock {
     Text {
         text: String,
+    },
+    Thinking {
+        thinking: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        signature: Option<String>,
     },
     ToolUse {
         id: String,
@@ -276,6 +284,8 @@ pub struct ContentDelta {
     #[serde(default)]
     pub thinking: String,
     #[serde(default)]
+    pub signature: String,
+    #[serde(default, alias = "partial_json")]
     pub input_json_delta: String,
     #[serde(default)]
     pub tool_use: Option<ToolUseInfo>,
@@ -431,4 +441,27 @@ pub struct ToolDefinition {
     pub description: String,
     #[serde(rename = "input_schema")]
     pub parameters: serde_json::Value,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ContentBlock;
+    use serde_json::json;
+
+    #[test]
+    fn content_block_thinking_serializes_with_expected_shape() {
+        let block = ContentBlock::Thinking {
+            thinking: "reasoning".to_string(),
+            signature: Some("sig-123".to_string()),
+        };
+
+        assert_eq!(
+            serde_json::to_value(block).unwrap(),
+            json!({
+                "type": "thinking",
+                "thinking": "reasoning",
+                "signature": "sig-123",
+            })
+        );
+    }
 }

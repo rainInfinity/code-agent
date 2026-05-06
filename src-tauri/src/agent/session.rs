@@ -91,6 +91,28 @@ pub struct AgentSession {
     pub created_at: u128,
 }
 
+fn build_assistant_content_blocks(
+    content: &str,
+    thinking_content: &str,
+    thinking_signature: Option<String>,
+    mut tool_calls: Vec<ContentBlock>,
+) -> Vec<ContentBlock> {
+    let mut content_blocks = Vec::with_capacity(tool_calls.len() + 2);
+    if !thinking_content.is_empty() {
+        content_blocks.push(ContentBlock::Thinking {
+            thinking: thinking_content.to_string(),
+            signature: thinking_signature,
+        });
+    }
+    if !content.is_empty() {
+        content_blocks.push(ContentBlock::Text {
+            text: content.to_string(),
+        });
+    }
+    content_blocks.append(&mut tool_calls);
+    content_blocks
+}
+
 impl AgentSession {
     pub fn new(
         conversation_id: String,
@@ -138,14 +160,19 @@ impl AgentSession {
         });
     }
 
-    pub fn add_assistant_message(&mut self, content: String, tool_calls: Vec<ContentBlock>) {
-        let mut content_blocks = Vec::new();
-        if !content.is_empty() {
-            content_blocks.push(ContentBlock::Text {
-                text: content.clone(),
-            });
-        }
-        content_blocks.extend(tool_calls);
+    pub fn add_assistant_message(
+        &mut self,
+        content: String,
+        thinking_content: String,
+        thinking_signature: Option<String>,
+        tool_calls: Vec<ContentBlock>,
+    ) {
+        let content_blocks = build_assistant_content_blocks(
+            &content,
+            &thinking_content,
+            thinking_signature,
+            tool_calls,
+        );
 
         self.messages.push(ChatMessage {
             role: "assistant".to_string(),
@@ -170,7 +197,83 @@ impl AgentSession {
         });
     }
 
+    /// 将所有 tool_result 放在**单条** user 消息中。
+    ///
+    /// Anthropic/DeepSeek API 要求 assistant 消息中的每个 `tool_use` 块都在
+    /// **紧接的下一条** user 消息中有对应的 `tool_result` 块。
+    /// 如果拆成多条 user 消息，后续 `tool_use` 会在错误的偏移处查找，
+    /// 导致 400 错误。
+    pub fn add_tool_results_batch(&mut self, results: Vec<(String, &ToolResult)>) {
+        if results.is_empty() {
+            return;
+        }
+        let blocks: Vec<ContentBlock> = results
+            .into_iter()
+            .map(|(tool_use_id, result)| {
+                let content = result
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| result.output.clone());
+                ContentBlock::ToolResult {
+                    tool_use_id,
+                    content,
+                    is_error: Some(!result.success),
+                }
+            })
+            .collect();
+        self.messages.push(ChatMessage {
+            role: "user".to_string(),
+            content: String::new(),
+            content_blocks: Some(blocks),
+        });
+    }
+
     pub fn set_status(&mut self, status: AgentStatus) {
         self.status = status;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_assistant_content_blocks;
+    use crate::models::ContentBlock;
+    use serde_json::json;
+
+    #[test]
+    fn assistant_content_blocks_place_thinking_before_text_and_tools() {
+        let blocks = build_assistant_content_blocks(
+            "final answer",
+            "reasoning",
+            Some("sig-123".to_string()),
+            vec![ContentBlock::ToolUse {
+                id: "tool-1".to_string(),
+                name: "shell".to_string(),
+                input: json!({ "command": "pwd" }),
+            }],
+        );
+
+        assert!(matches!(
+            &blocks[0],
+            ContentBlock::Thinking { thinking, signature } if thinking == "reasoning" && signature.as_deref() == Some("sig-123")
+        ));
+        assert!(matches!(
+            &blocks[1],
+            ContentBlock::Text { text } if text == "final answer"
+        ));
+        assert!(matches!(
+            &blocks[2],
+            ContentBlock::ToolUse { id, name, .. } if id == "tool-1" && name == "shell"
+        ));
+    }
+
+    #[test]
+    fn assistant_content_blocks_omit_empty_thinking() {
+        let blocks = build_assistant_content_blocks("final answer", "", None, Vec::new());
+
+        assert_eq!(blocks.len(), 1);
+        assert!(matches!(
+            &blocks[0],
+            ContentBlock::Text { text } if text == "final answer"
+        ));
     }
 }

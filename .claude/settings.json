@@ -48,7 +48,10 @@
       "Bash(Get-ChildItem -Path \"f:\\\\project\\\\code-agent\" -Depth 0 -Name)",
       "PowerShell(if \\(-not $?\\) { \"No .agent directory\" })",
       "Bash(Get-ChildItem -Path \"f:\\\\project\\\\code-agent\\\\openspec\\\\changes\" -Directory)",
-      "Bash(Select-Object -ExpandProperty Name)"
+      "Bash(Select-Object -ExpandProperty Name)",
+      "PowerShell(npx openspec list --json 2>$null)",
+      "PowerShell(New-Item -ItemType Directory -Path \"openspec/changes/2026-05-05-fix-thinking-content-preservation\" -Force)",
+      "Bash(cargo test *)"
     ],
     "additionalDirectories": [
       "F:\\project\\code-agent\\openspec\\changes\\multi-provider-api-config\\specs",

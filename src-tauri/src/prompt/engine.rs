@@ -1,6 +1,6 @@
 use super::builtins;
 use super::templates::{PromptSection, PromptTemplate, TemplateRegistry};
-use crate::models::{ChatMessage, SessionContext, ToolDefinition};
+use crate::models::{ChatMessage, ContentBlock, SessionContext, ToolDefinition};
 use std::path::Path;
 use std::process::Command;
 
@@ -9,6 +9,11 @@ pub struct PromptBuildResult {
     pub system_prompt: String,
     pub messages: Vec<ChatMessage>,
     pub tools: Vec<ToolDefinition>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PromptBuildOptions {
+    pub preserve_thinking_blocks: bool,
 }
 
 pub fn collect_session_context(cwd: Option<&str>) -> SessionContext {
@@ -36,6 +41,36 @@ pub struct PromptEngine {
     templates: TemplateRegistry,
 }
 
+fn sanitize_prompt_message(message: &ChatMessage, options: PromptBuildOptions) -> ChatMessage {
+    let preserve_thinking_blocks = options.preserve_thinking_blocks
+        || message.role == "assistant"
+            && message
+                .content_blocks
+                .as_ref()
+                .map(|blocks| {
+                    blocks
+                        .iter()
+                        .any(|block| matches!(block, ContentBlock::ToolUse { .. }))
+                })
+                .unwrap_or(false);
+
+    let content_blocks = message.content_blocks.as_ref().map(|blocks| {
+        blocks
+            .iter()
+            .filter(|block| {
+                preserve_thinking_blocks || !matches!(block, ContentBlock::Thinking { .. })
+            })
+            .cloned()
+            .collect::<Vec<_>>()
+    });
+
+    ChatMessage {
+        role: message.role.clone(),
+        content: message.content.clone(),
+        content_blocks: content_blocks.filter(|blocks| !blocks.is_empty()),
+    }
+}
+
 impl PromptEngine {
     pub fn new() -> Self {
         Self {
@@ -49,6 +84,7 @@ impl PromptEngine {
         messages: &[ChatMessage],
         tools: &[ToolDefinition],
         session_ctx: &SessionContext,
+        options: PromptBuildOptions,
     ) -> PromptBuildResult {
         let template = self.template_for(agent_type);
         let system_prompt = template
@@ -66,7 +102,10 @@ impl PromptEngine {
 
         PromptBuildResult {
             system_prompt,
-            messages: messages.to_vec(),
+            messages: messages
+                .iter()
+                .map(|message| sanitize_prompt_message(message, options))
+                .collect(),
             tools: tools.to_vec(),
         }
     }
@@ -136,6 +175,7 @@ fn git_output<const N: usize>(cwd: &str, args: [&str; N]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::ContentBlock;
 
     fn context() -> SessionContext {
         SessionContext {
@@ -150,21 +190,122 @@ mod tests {
 
     #[test]
     fn code_prompt_includes_tool_rules_and_runtime_context() {
-        let result = PromptEngine::new().build("code", &[], &[], &context());
+        let result =
+            PromptEngine::new().build("code", &[], &[], &context(), PromptBuildOptions::default());
 
         assert!(result.system_prompt.contains("You are Code Agent"));
         assert!(result.system_prompt.contains("operating in code mode"));
         assert!(result.system_prompt.contains("Tool priority rules"));
         assert!(result.system_prompt.contains(builtins::CACHE_BOUNDARY));
         assert!(result.system_prompt.contains("OS: Windows 11"));
-        assert!(result.system_prompt.contains("Current working directory: /project"));
+        assert!(result
+            .system_prompt
+            .contains("Current working directory: /project"));
     }
 
     #[test]
     fn chat_prompt_omits_tool_rules() {
-        let result = PromptEngine::new().build("chat", &[], &[], &context());
+        let result =
+            PromptEngine::new().build("chat", &[], &[], &context(), PromptBuildOptions::default());
 
         assert!(result.system_prompt.contains("operating in chat mode"));
         assert!(!result.system_prompt.contains("Tool priority rules"));
+    }
+
+    #[test]
+    fn build_omits_assistant_thinking_blocks_from_prompt_messages_by_default() {
+        let result = PromptEngine::new().build(
+            "code",
+            &[ChatMessage {
+                role: "assistant".to_string(),
+                content: "final answer".to_string(),
+                content_blocks: Some(vec![
+                    ContentBlock::Thinking {
+                        thinking: "reasoning".to_string(),
+                        signature: None,
+                    },
+                    ContentBlock::Text {
+                        text: "final answer".to_string(),
+                    },
+                ]),
+            }],
+            &[],
+            &context(),
+            PromptBuildOptions::default(),
+        );
+
+        let blocks = result.messages[0].content_blocks.as_ref().unwrap();
+        assert!(matches!(
+            &blocks[0],
+            ContentBlock::Text { text } if text == "final answer"
+        ));
+    }
+
+    #[test]
+    fn build_preserves_required_thinking_for_assistant_tool_use_messages() {
+        let result = PromptEngine::new().build(
+            "code",
+            &[ChatMessage {
+                role: "assistant".to_string(),
+                content: String::new(),
+                content_blocks: Some(vec![
+                    ContentBlock::Thinking {
+                        thinking: "reasoning".to_string(),
+                        signature: None,
+                    },
+                    ContentBlock::ToolUse {
+                        id: "tool-1".to_string(),
+                        name: "read_file".to_string(),
+                        input: serde_json::json!({ "file_path": "src/main.rs" }),
+                    },
+                ]),
+            }],
+            &[],
+            &context(),
+            PromptBuildOptions::default(),
+        );
+
+        let blocks = result.messages[0].content_blocks.as_ref().unwrap();
+        assert_eq!(blocks.len(), 2);
+        assert!(matches!(
+            &blocks[0],
+            ContentBlock::Thinking { thinking, .. } if thinking == "reasoning"
+        ));
+        assert!(matches!(
+            &blocks[1],
+            ContentBlock::ToolUse { id, name, .. } if id == "tool-1" && name == "read_file"
+        ));
+    }
+
+    #[test]
+    fn build_preserves_assistant_thinking_blocks_when_requested() {
+        let result = PromptEngine::new().build(
+            "code",
+            &[ChatMessage {
+                role: "assistant".to_string(),
+                content: "final answer".to_string(),
+                content_blocks: Some(vec![
+                    ContentBlock::Thinking {
+                        thinking: "reasoning".to_string(),
+                        signature: None,
+                    },
+                    ContentBlock::Text {
+                        text: "final answer".to_string(),
+                    },
+                ]),
+            }],
+            &[],
+            &context(),
+            PromptBuildOptions {
+                preserve_thinking_blocks: true,
+            },
+        );
+
+        let blocks = result.messages[0].content_blocks.as_ref().unwrap();
+        assert_eq!(blocks.len(), 2);
+        assert!(matches!(
+            &blocks[0],
+            ContentBlock::Thinking { thinking, .. } if thinking == "reasoning"
+        ));
     }
 }

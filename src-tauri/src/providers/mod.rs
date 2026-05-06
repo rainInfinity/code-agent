@@ -12,10 +12,12 @@ use crate::models::{ChatMessage, ModelInfo};
 pub enum ParseResult {
     TextDelta(String),
     ThinkingDelta(String),
+    ThinkingSignature(String),
     ToolUseStart {
         index: usize,
         id: String,
         name: String,
+        input_json: Option<String>,
     },
     ToolUseDelta {
         index: usize,

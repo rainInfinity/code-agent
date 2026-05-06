@@ -1,7 +1,7 @@
 use crate::agent::{AgentConfig, AgentRuntime, AgentSession, TauriAgentEventEmitter};
 use crate::llm::LlmClient;
 use crate::models::*;
-use crate::prompt::{collect_session_context, PromptEngine};
+use crate::prompt::{collect_session_context, PromptBuildOptions, PromptEngine};
 use crate::providers::{built_in_provider_ids, default_endpoint, default_model};
 use crate::tools::ToolRegistry;
 use crate::{TraceDockingSide, TraceDockingSnapshot};
@@ -218,7 +218,13 @@ pub async fn send_message(
         .filter(|value| *value == "chat" || *value == "code")
         .unwrap_or("chat");
     let session_context = collect_session_context(payload.work_dir.as_deref());
-    let prompt = PromptEngine::new().build(agent_type, &payload.messages, &[], &session_context);
+    let prompt = PromptEngine::new().build(
+        agent_type,
+        &payload.messages,
+        &[],
+        &session_context,
+        PromptBuildOptions::default(),
+    );
     let _ = app.emit(
         "trace-prompt",
         TracePromptEvent {

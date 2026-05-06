@@ -44,6 +44,8 @@ impl TokenUsage {
 #[derive(Debug, Clone)]
 pub struct LlmStreamResult {
     pub full_content: String,
+    pub thinking_content: String,
+    pub thinking_signature: Option<String>,
     pub usage: TokenUsage,
 }
 
@@ -138,6 +140,7 @@ impl LlmClient {
         }
 
         let mut full_content = String::new();
+        let thinking_content = String::new();
         let mut usage = TokenUsage::default();
         let mut stream = response.bytes_stream();
 
@@ -175,6 +178,8 @@ impl LlmClient {
                                 if data.trim() == "[DONE]" {
                                     return Ok(LlmStreamResult {
                                         full_content,
+                                        thinking_content,
+                                        thinking_signature: None,
                                         usage,
                                     });
                                 }
@@ -191,6 +196,8 @@ impl LlmClient {
 
         Ok(LlmStreamResult {
             full_content,
+            thinking_content,
+            thinking_signature: None,
             usage,
         })
     }
@@ -246,6 +253,8 @@ impl LlmClient {
         }
 
         let mut full_content = String::new();
+        let mut thinking_content = String::new();
+        let mut thinking_signature = None;
         let mut usage = TokenUsage::default();
         let mut stream = response.bytes_stream();
         let mut buffer = String::new();
@@ -273,6 +282,8 @@ impl LlmClient {
                         if data.trim() == "[DONE]" {
                             return Ok(LlmStreamResult {
                                 full_content,
+                                thinking_content,
+                                thinking_signature,
                                 usage,
                             });
                         }
@@ -283,15 +294,24 @@ impl LlmClient {
                                 on_text_delta(delta);
                             }
                             Ok(Some(ParseResult::ThinkingDelta(delta))) => {
+                                thinking_content.push_str(&delta);
                                 on_thinking_delta(delta);
                             }
-                            Ok(Some(ParseResult::ToolUseStart { index, id, name })) => {
+                            Ok(Some(ParseResult::ThinkingSignature(signature))) => {
+                                thinking_signature = Some(signature);
+                            }
+                            Ok(Some(ParseResult::ToolUseStart {
+                                index,
+                                id,
+                                name,
+                                input_json,
+                            })) => {
                                 pending_tools.insert(
                                     index,
                                     PendingToolUse {
                                         id,
                                         name,
-                                        input_json: String::new(),
+                                        input_json: input_json.unwrap_or_default(),
                                     },
                                 );
                             }
@@ -339,6 +359,8 @@ impl LlmClient {
 
         Ok(LlmStreamResult {
             full_content,
+            thinking_content,
+            thinking_signature,
             usage,
         })
     }

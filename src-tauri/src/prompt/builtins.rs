@@ -12,26 +12,22 @@ pub fn registry() -> TemplateRegistry {
     [
         (
             "code",
-            PromptTemplate::new(
-                vec![
-                    PromptSection::Static(BASE_SYSTEM),
-                    PromptSection::Static(AGENT_CODE),
-                    PromptSection::Static(RULES_TOOL_PRIORITY),
-                    PromptSection::Include(CACHE_BOUNDARY),
-                    PromptSection::Dynamic(RUNTIME_CONTEXT),
-                ],
-            ),
+            PromptTemplate::new(vec![
+                PromptSection::Static(BASE_SYSTEM),
+                PromptSection::Static(AGENT_CODE),
+                PromptSection::Static(RULES_TOOL_PRIORITY),
+                PromptSection::Include(CACHE_BOUNDARY),
+                PromptSection::Dynamic(RUNTIME_CONTEXT),
+            ]),
         ),
         (
             "chat",
-            PromptTemplate::new(
-                vec![
-                    PromptSection::Static(BASE_SYSTEM),
-                    PromptSection::Static(AGENT_CHAT),
-                    PromptSection::Include(CACHE_BOUNDARY),
-                    PromptSection::Dynamic(RUNTIME_CONTEXT),
-                ],
-            ),
+            PromptTemplate::new(vec![
+                PromptSection::Static(BASE_SYSTEM),
+                PromptSection::Static(AGENT_CHAT),
+                PromptSection::Include(CACHE_BOUNDARY),
+                PromptSection::Dynamic(RUNTIME_CONTEXT),
+            ]),
         ),
     ]
     .into_iter()

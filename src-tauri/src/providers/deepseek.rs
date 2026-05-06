@@ -77,6 +77,11 @@ impl LlmProvider for DeepSeekProvider {
             {
                 Ok(Some(ParseResult::ThinkingDelta(delta.thinking)))
             }
+            StreamEvent::ContentBlockDelta { delta, .. }
+                if delta.delta_type == "signature_delta" =>
+            {
+                Ok(Some(ParseResult::ThinkingSignature(delta.signature)))
+            }
             StreamEvent::ContentBlockStart {
                 index,
                 content_block,
@@ -92,7 +97,16 @@ impl LlmProvider for DeepSeekProvider {
                         .and_then(|value| value.as_str())
                         .unwrap_or_default()
                         .to_string();
-                    Ok(Some(ParseResult::ToolUseStart { index, id, name }))
+                    let input_json = content_block
+                        .get("input")
+                        .filter(|value| !value.is_null() && *value != &serde_json::json!({}))
+                        .map(|value| value.to_string());
+                    Ok(Some(ParseResult::ToolUseStart {
+                        index,
+                        id,
+                        name,
+                        input_json,
+                    }))
                 } else {
                     Ok(None)
                 }
@@ -151,6 +165,7 @@ impl LlmProvider for DeepSeekProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn includes_non_empty_system_prompt() {
@@ -161,5 +176,92 @@ mod tests {
             request.get("system").and_then(|value| value.as_str()),
             Some("system")
         );
+    }
+
+    #[test]
+    fn serializes_thinking_content_blocks_in_messages() {
+        let request = DeepSeekProvider.build_chat_request(
+            "deepseek-reasoner",
+            None,
+            &[ChatMessage {
+                role: "assistant".to_string(),
+                content: "final answer".to_string(),
+                content_blocks: Some(vec![
+                    ContentBlock::Thinking {
+                        thinking: "reasoning".to_string(),
+                        signature: Some("sig-123".to_string()),
+                    },
+                    ContentBlock::Text {
+                        text: "final answer".to_string(),
+                    },
+                ]),
+            }],
+        );
+
+        assert_eq!(
+            request["messages"][0]["content"],
+            json!([
+                {
+                    "type": "thinking",
+                    "thinking": "reasoning",
+                    "signature": "sig-123",
+                },
+                {
+                    "type": "text",
+                    "text": "final answer",
+                }
+            ])
+        );
+    }
+
+    #[test]
+    fn parses_tool_use_start_with_inline_input() {
+        let event = serde_json::json!({
+            "type": "content_block_start",
+            "index": 0,
+            "content_block": {
+                "type": "tool_use",
+                "id": "toolu_123",
+                "name": "read_file",
+                "input": {
+                    "file_path": "src/main.rs"
+                }
+            }
+        });
+
+        let result = DeepSeekProvider
+            .parse_stream_data(&event.to_string())
+            .unwrap();
+
+        assert!(matches!(
+            result,
+            Some(ParseResult::ToolUseStart { index, id, name, input_json })
+                if index == 0
+                    && id == "toolu_123"
+                    && name == "read_file"
+                    && input_json.as_deref() == Some("{\"file_path\":\"src/main.rs\"}")
+        ));
+    }
+
+    #[test]
+    fn parses_tool_use_partial_json_delta() {
+        let event = serde_json::json!({
+            "type": "content_block_delta",
+            "index": 1,
+            "delta": {
+                "type": "input_json_delta",
+                "partial_json": "{\"file_path\":\"main.py\"}"
+            }
+        });
+
+        let result = DeepSeekProvider
+            .parse_stream_data(&event.to_string())
+            .unwrap();
+
+        assert!(matches!(
+            result,
+            Some(ParseResult::ToolUseDelta { index, input_json_delta })
+                if index == 1 && input_json_delta == "{\"file_path\":\"main.py\"}"
+        ));
     }
 }

@@ -2,12 +2,13 @@ use crate::agent::session::AgentSession;
 use crate::llm::ToolCall;
 use crate::models::{
     AgentCompleteEvent, AgentStatus, AgentTurnEvent, ContentBlock, StreamDeltaEvent,
-    StreamThinkingEvent, ToolCallEvent, ToolResult, ToolResultEvent, TracePromptEvent,
+    StreamThinkingEvent, ToolCallEvent, ToolContext, ToolResult, ToolResultEvent, TracePromptEvent,
     TraceThinkingEvent,
 };
-use crate::prompt::{collect_session_context, PromptEngine};
+use crate::prompt::{collect_session_context, PromptBuildOptions, PromptEngine};
 use crate::tools::executor::ToolExecutor;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -87,6 +88,7 @@ pub async fn agent_loop(session: &mut AgentSession) -> Result<AgentStatus, Strin
             &session.messages,
             &tools,
             &session_context,
+            PromptBuildOptions::default(),
         );
         emitter.emit_trace_prompt(TracePromptEvent {
             conversation_id: session.conversation_id.clone(),
@@ -194,38 +196,71 @@ pub async fn agent_loop(session: &mut AgentSession) -> Result<AgentStatus, Strin
                 input: tool_call.input.clone(),
             })
             .collect();
-        session.add_assistant_message(stream_result.full_content, tool_blocks);
+        session.add_assistant_message(
+            stream_result.full_content,
+            stream_result.thinking_content,
+            stream_result.thinking_signature,
+            tool_blocks,
+        );
 
         if tool_calls.is_empty() {
             return complete(session, AgentStatus::Complete, "Complete").await;
         }
 
-        for tool_call in tool_calls {
-            let result = match session.tool_registry.get(&tool_call.name) {
-                Some(tool) => executor.execute(tool, tool_call.input.clone()).await,
-                None => ToolResult {
-                    success: false,
-                    output: String::new(),
-                    error: Some(format!("Tool not found: {}", tool_call.name)),
-                },
-            };
+        let ctx = ToolContext {
+            workspace_root: session
+                .work_dir
+                .as_ref()
+                .map(PathBuf::from)
+                .unwrap_or_default(),
+            allowed_paths: Vec::new(),
+            env_vars: HashMap::new(),
+            cancellation: session.cancel_token.clone(),
+        };
+        let results = executor
+            .execute_batch(session.tool_registry.as_ref(), &tool_calls, &ctx)
+            .await;
 
+        if let Some(reason) = detect_empty_argument_tool_loop(&tool_calls, &results) {
+            for (tool_call, result) in tool_calls.iter().zip(results.iter()) {
+                session.emitter.emit_tool_result(ToolResultEvent {
+                    conversation_id: session.conversation_id.clone(),
+                    message_id: session.assistant_message_id.clone(),
+                    tool_call_id: tool_call.id.clone(),
+                    result: result.clone(),
+                });
+            }
+            session.add_tool_results_batch(
+                tool_calls
+                    .iter()
+                    .zip(results.iter())
+                    .map(|(tool_call, result)| (tool_call.id.clone(), result))
+                    .collect(),
+            );
+            return complete(session, AgentStatus::Error, &reason).await;
+        }
+
+        let mut batch_results: Vec<(String, &ToolResult)> = Vec::with_capacity(tool_calls.len());
+        for (tool_call, result) in tool_calls.iter().zip(results.iter()) {
             session.emitter.emit_tool_result(ToolResultEvent {
                 conversation_id: session.conversation_id.clone(),
                 message_id: session.assistant_message_id.clone(),
                 tool_call_id: tool_call.id.clone(),
                 result: result.clone(),
             });
-            session.add_tool_result(tool_call.id, &result);
+            batch_results.push((tool_call.id.clone(), result));
 
             if session.cancel_token.is_cancelled() {
                 return complete(session, AgentStatus::Cancelled, "Cancelled").await;
             }
         }
+        session.add_tool_results_batch(batch_results);
     }
 
     session.add_assistant_message(
         "Agent stopped after reaching the maximum turn limit.".to_string(),
+        String::new(),
+        None,
         Vec::new(),
     );
     complete(
@@ -234,6 +269,42 @@ pub async fn agent_loop(session: &mut AgentSession) -> Result<AgentStatus, Strin
         "Maximum turn limit reached",
     )
     .await
+}
+
+fn detect_empty_argument_tool_loop(
+    tool_calls: &[ToolCall],
+    results: &[ToolResult],
+) -> Option<String> {
+    if tool_calls.is_empty() || tool_calls.len() != results.len() {
+        return None;
+    }
+
+    let all_empty_inputs = tool_calls.iter().all(
+        |tool_call| matches!(&tool_call.input, serde_json::Value::Object(map) if map.is_empty()),
+    );
+    if !all_empty_inputs {
+        return None;
+    }
+
+    let all_validation_errors = results.iter().all(|result| {
+        result.error.as_deref().is_some_and(|error| {
+            error.contains("Validation:")
+                && (error.contains("is required") || error.contains("must be a string"))
+        })
+    });
+    if !all_validation_errors {
+        return None;
+    }
+
+    let tool_names = tool_calls
+        .iter()
+        .map(|tool_call| tool_call.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    Some(format!(
+        "Model emitted empty arguments for required-parameter tool calls ({tool_names}). Stopped to avoid an infinite retry loop."
+    ))
 }
 
 async fn complete(

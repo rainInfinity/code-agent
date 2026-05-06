@@ -427,7 +427,7 @@ const ToolIndicator = styled.div`
   display: inline-flex;
   align-items: center;
   gap: ${({ theme }) => theme.spacing.xs};
-  margin: ${({ theme }) => theme.spacing.sm} 0;
+  margin: ${({ theme }) => theme.spacing.sm} 4px;
   padding: ${({ theme }) => theme.spacing.xs} ${({ theme }) => theme.spacing.sm};
   border-radius: ${({ theme }) => theme.borderRadius.md};
   background-color: ${({ theme }) => theme.colors.bgSecondary};
@@ -566,7 +566,7 @@ const MessageBodyContent: React.FC<{ message: Message; role: MessageRole }> = ({
       ) : null}
       {toolCalls?.map((toolCall) => (
         <ToolIndicator key={toolCall.id}>
-          Running {toolCall.name}...
+          {toolCall.name}
         </ToolIndicator>
       ))}
       {toolResults?.map((toolResult) => (
