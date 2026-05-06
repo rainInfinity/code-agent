@@ -1,5 +1,6 @@
 import type { FoldConfig } from '@/config/foldConfig';
 import type { Message, TurnTrace } from '@/types';
+import { getMessageToolTraces, summarizeContentBlocks } from '@/utils/traceUtils';
 
 type FoldThresholds = Pick<FoldConfig, 'MAX_VISIBLE_TURNS' | 'TOKEN_BUDGET' | 'CHARS_PER_TOKEN'>;
 
@@ -32,30 +33,31 @@ export const estimateTokens = (text: string, charsPerToken: number): number => {
 };
 
 const getMessageTokenText = (message: Message): string => {
-  const toolCallText = (message.toolCalls ?? []).map((toolCall) =>
-    `${toolCall.name}\n${JSON.stringify(toolCall.input)}`,
-  );
-  const toolResultText = (message.toolResults ?? []).flatMap((toolResult) =>
-    [toolResult.output, toolResult.error ?? ''].filter(Boolean),
+  const toolTraceText = getMessageToolTraces(message).flatMap((toolTrace) =>
+    [toolTrace.name, JSON.stringify(toolTrace.input), toolTrace.output ?? '', toolTrace.error ?? ''].filter(Boolean),
   );
 
   return [
     message.content,
     message.thinkingContent ?? '',
-    ...toolCallText,
-    ...toolResultText,
+    ...toolTraceText,
   ]
     .filter(Boolean)
     .join('\n');
 };
 
 const getTurnTokenText = (turn: TurnTrace): string => {
-  const promptMessages = turn.prompt?.messages.map((message) => message.content) ?? [];
+  const promptMessages =
+    turn.prompt?.messages.map((message) => summarizeContentBlocks(message.contentBlocks) || message.content) ?? [];
+  const toolText = turn.tools.flatMap((toolTrace) =>
+    [toolTrace.name, JSON.stringify(toolTrace.input), toolTrace.output ?? '', toolTrace.error ?? ''].filter(Boolean),
+  );
 
   return [
     turn.prompt?.systemPrompt ?? '',
     ...promptMessages,
     turn.thinking.content,
+    ...toolText,
     turn.response.content,
   ]
     .filter(Boolean)

@@ -10,8 +10,15 @@ export type MessageStatus = 'pending' | 'streaming' | 'complete' | 'error';
 
 /** Agent operation mode */
 export type AgentMode = 'chat' | 'code';
-export type ContentBlockType = 'text' | 'tool_use' | 'tool_result';
+export type ContentBlockType = 'text' | 'thinking' | 'tool_use' | 'tool_result';
 export type AgentStatus = 'idle' | 'running' | 'complete' | 'cancelled' | 'max_turns_reached' | 'error';
+export type ToolTracePhase = 'requested' | 'running' | 'completed' | 'failed';
+export type TurnTraceStatus =
+  | 'running'
+  | 'complete'
+  | 'cancelled'
+  | 'max_turns_reached'
+  | 'error';
 
 /** Working directory with its conversation management */
 export interface WorkDir {
@@ -31,12 +38,14 @@ export interface Message {
   usage?: TokenUsage;
   thinkingContent?: string;
   thinkingStartedAt?: number;
+  toolTraces?: ToolTrace[];
   toolCalls?: ToolCall[];
   toolResults?: ToolResult[];
 }
 
 export type ContentBlock =
   | { type: 'text'; text: string }
+  | { type: 'thinking'; thinking: string; signature?: string }
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
   | { type: 'tool_result'; toolUseId: string; content: string; isError?: boolean };
 
@@ -65,6 +74,22 @@ export interface ToolResult {
   toolCallId: string;
   success: boolean;
   output: string;
+  error?: string;
+}
+
+export interface ToolTrace {
+  toolCallId: string;
+  name: string;
+  input: Record<string, unknown>;
+  status: ToolTracePhase;
+  logicalIndex: number;
+  batchId?: number;
+  batchIndex?: number;
+  isConcurrent?: boolean;
+  requestedAt?: number;
+  startedAt?: number;
+  completedAt?: number;
+  output?: string;
   error?: string;
 }
 
@@ -161,6 +186,27 @@ export interface ToolResultEvent {
   };
 }
 
+export interface ToolTraceEvent {
+  conversationId: string;
+  sessionId: string;
+  turn: number;
+  messageId: string;
+  toolCallId: string;
+  name: string;
+  input: Record<string, unknown>;
+  phase: ToolTracePhase;
+  logicalIndex: number;
+  batchId?: number;
+  batchIndex?: number;
+  isConcurrent?: boolean;
+  result?: {
+    success: boolean;
+    output: string;
+    error?: string;
+  };
+  timestampMs: number;
+}
+
 export interface ToolDefinition {
   name: string;
   description: string;
@@ -192,7 +238,7 @@ export interface TurnTrace {
   conversationId: string;
   startTime: number;
   endTime?: number;
-  status: 'running' | 'complete' | 'error';
+  status: TurnTraceStatus;
   prompt?: {
     systemPrompt: string;
     messages: TracePromptEvent['messages'];
@@ -209,6 +255,7 @@ export interface TurnTrace {
     startTime?: number;
     endTime?: number;
   };
+  tools: ToolTrace[];
   usage?: TokenUsage;
 }
 
@@ -233,17 +280,10 @@ export interface TraceState {
   isPinned: boolean;
   alwaysOnTop: boolean;
   docking: TraceDockingState;
-  agentStatus: 'idle' | 'running' | 'complete' | 'error';
+  agentStatus: AgentStatus;
   setPinned: (isPinned: boolean) => void;
   setAlwaysOnTop: (alwaysOnTop: boolean) => void;
   setDocking: (docking: TraceDockingState) => void;
-  startTurn: (event: AgentTurnEvent) => void;
-  addPrompt: (event: TracePromptEvent) => void;
-  startThinking: (event: TraceThinkingEvent) => void;
-  endThinking: (event: TraceThinkingEvent) => void;
-  appendThinking: (event: StreamThinkingEvent) => void;
-  appendResponse: (event: StreamEvent) => void;
-  endTurn: (event: AgentCompleteEvent) => void;
   reset: (conversationId?: string | null) => void;
   clearTurns: (conversationId: string) => void;
 }
@@ -258,6 +298,16 @@ export interface AgentCompleteEvent {
   conversationId: string;
   sessionId: string;
   messageId: string;
+  status: AgentStatus;
+  reason: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface AgentTurnCompleteEvent {
+  conversationId: string;
+  sessionId: string;
+  turnCount: number;
   status: AgentStatus;
   reason: string;
   inputTokens: number;

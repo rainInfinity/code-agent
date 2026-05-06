@@ -14,10 +14,19 @@ import {
 import { SiAnthropic } from 'react-icons/si';
 import type { IconType } from 'react-icons';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { listModels, loadSettings, saveSettings, type ModelInfo } from '@/hooks/useIpc';
+import {
+  listModels,
+  loadSettings,
+  saveSettings,
+  type ModelInfo,
+} from '@/hooks/useIpc';
 import { Column, Row } from '@/components/common/Flex';
 import { messages } from '@/i18n';
-import { PROVIDER_IDS, createDefaultProviderSettings, getProvider } from '@/config/providers';
+import {
+  PROVIDER_IDS,
+  createDefaultProviderSettings,
+  getProvider,
+} from '@/config/providers';
 import type { ProviderId, ProviderSettings } from '@/types';
 
 // ─── Animations ─────────────────────────────────────────────
@@ -101,8 +110,11 @@ const SectionNavButton = styled.button<{ $active: boolean }>`
     $active ? `${theme.colors.accentPrimary}14` : 'transparent'};
   font-size: ${({ theme }) => theme.typography.fontSize.sm};
   font-weight: ${({ theme, $active }) =>
-    $active ? theme.typography.fontWeight.semibold : theme.typography.fontWeight.medium};
-  transition: color ${({ theme }) => theme.transitions.fast},
+    $active
+      ? theme.typography.fontWeight.semibold
+      : theme.typography.fontWeight.medium};
+  transition:
+    color ${({ theme }) => theme.transitions.fast},
     background-color ${({ theme }) => theme.transitions.fast};
 
   &:hover {
@@ -194,13 +206,13 @@ const Input = styled.input`
 const Select = styled.select`
   flex: 1;
   min-width: 0;
-  padding: ${({ theme }) => theme.spacing.sm} 44px ${({ theme }) => theme.spacing.sm}
-    ${({ theme }) => theme.spacing.md};
+  padding: ${({ theme }) => theme.spacing.sm} 44px
+    ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.md};
   appearance: none;
   background-color: ${({ theme }) => theme.colors.inputBg};
   background-image: url("data:image/svg+xml,%3Csvg width='14' height='14' viewBox='0 0 20 20' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M5 7.5L10 12.5L15 7.5' stroke='%239AA4B2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 16px center;
+  background-position: right 8px center;
   background-size: 14px;
   border: 1px solid ${({ theme }) => theme.colors.inputBorder};
   border-radius: ${({ theme }) => theme.borderRadius.md};
@@ -234,8 +246,9 @@ const ProviderRadioButton = styled.button<{ $active: boolean }>`
   justify-content: center;
   height: 44px;
   border-radius: ${({ theme }) => theme.borderRadius.md};
-  border: 1px solid ${({ theme, $active }) =>
-    $active ? theme.colors.accentPrimary : theme.colors.inputBorder};
+  border: 1px solid
+    ${({ theme, $active }) =>
+      $active ? theme.colors.accentPrimary : theme.colors.inputBorder};
   background-color: ${({ theme, $active }) =>
     $active ? `${theme.colors.accentPrimary}18` : theme.colors.inputBg};
   color: ${({ theme, $active }) =>
@@ -277,7 +290,8 @@ const IconButton = styled.button<{ $loading?: boolean }>`
   }
 
   svg {
-    animation: ${({ $loading }) => ($loading ? spin : 'none')} 800ms linear infinite;
+    animation: ${({ $loading }) => ($loading ? spin : 'none')} 800ms linear
+      infinite;
   }
 `;
 
@@ -311,8 +325,9 @@ const ThemeButton = styled.button<{ $active: boolean }>`
   gap: ${({ theme }) => theme.spacing.sm};
   padding: ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.lg};
   border-radius: ${({ theme }) => theme.borderRadius.md};
-  border: 1px solid ${({ theme, $active }) =>
-    $active ? theme.colors.accentPrimary : theme.colors.border};
+  border: 1px solid
+    ${({ theme, $active }) =>
+      $active ? theme.colors.accentPrimary : theme.colors.border};
   background-color: ${({ theme, $active }) =>
     $active ? `${theme.colors.accentPrimary}15` : 'transparent'};
   color: ${({ theme, $active }) =>
@@ -449,21 +464,31 @@ const sectionItems: Array<{
 export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const settings = useSettingsStore();
 
-  const [activeSection, setActiveSection] = useState<SettingsSection>('general');
-  const [providerId, setProviderId] = useState<ProviderId>(settings.activeProviderId);
-  const [drafts, setDrafts] = useState<Record<ProviderId, ProviderSettings>>(settings.providers);
+  const [activeSection, setActiveSection] =
+    useState<SettingsSection>('general');
+  const [providerId, setProviderId] = useState<ProviderId>(
+    settings.activeProviderId,
+  );
+  const [drafts, setDrafts] = useState<Record<ProviderId, ProviderSettings>>(
+    settings.providers,
+  );
   const [apiKey, setApiKey] = useState('');
-  const [apiEndpoint, setApiEndpoint] = useState(settings.activeProviderSettings.apiEndpoint);
+  const [apiEndpoint, setApiEndpoint] = useState(
+    settings.activeProviderSettings.apiEndpoint,
+  );
   const [model, setModel] = useState(settings.activeProviderSettings.model);
   const [theme, setThemeLocal] = useState(settings.theme);
-  const [apiKeyConfigured, setApiKeyConfigured] = useState(settings.apiKeyConfigured);
+  const [apiKeyConfigured, setApiKeyConfigured] = useState(
+    settings.apiKeyConfigured,
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
   const activeProvider = getProvider(providerId);
-  const providerHasApiKey = apiKeyConfigured[providerId] || apiKey.trim().length > 0;
+  const providerHasApiKey =
+    apiKeyConfigured[providerId] || apiKey.trim().length > 0;
 
   // Close on Escape
   useEffect(() => {
@@ -485,7 +510,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             const provider = loaded.providers[id];
             acc[id] = {
               ...createDefaultProviderSettings(id),
-              apiEndpoint: provider?.apiEndpoint ?? createDefaultProviderSettings(id).apiEndpoint,
+              apiEndpoint:
+                provider?.apiEndpoint ??
+                createDefaultProviderSettings(id).apiEndpoint,
               model: provider?.model ?? createDefaultProviderSettings(id).model,
               apiKey: '',
             };
@@ -529,7 +556,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         model,
       },
     };
-    const nextSettings = nextDrafts[nextProviderId] ?? createDefaultProviderSettings(nextProviderId);
+    const nextSettings =
+      nextDrafts[nextProviderId] ??
+      createDefaultProviderSettings(nextProviderId);
 
     setDrafts(nextDrafts);
     setProviderId(nextProviderId);
@@ -605,7 +634,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   return (
     <Overlay onClick={onClose}>
       <Modal onClick={(e) => e.stopPropagation()}>
-        <CloseButton onClick={onClose} aria-label={messages.settings.close} title={messages.settings.close}>
+        <CloseButton
+          onClick={onClose}
+          aria-label={messages.settings.close}
+          title={messages.settings.close}
+        >
           <FaXmark size={16} />
         </CloseButton>
 
@@ -633,11 +666,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             <SectionScroll $gap="xl">
               {activeSection === 'general' && (
                 <Section $gap="md">
-                  <SectionTitle>{messages.settings.sidebar.general}</SectionTitle>
+                  <SectionTitle>
+                    {messages.settings.sidebar.general}
+                  </SectionTitle>
 
                   <InlineFieldGroup $gap="md">
                     <Label>
-                      <LabelIcon><FaPalette size={12} /></LabelIcon>
+                      <LabelIcon>
+                        <FaPalette size={12} />
+                      </LabelIcon>
                       {messages.settings.theme}
                     </Label>
                     <ThemeToggleGroup $gap="sm">
@@ -668,10 +705,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
                   <FieldGroup $gap="xs">
                     <Label id="provider-label">
-                      <LabelIcon><FaServer size={12} /></LabelIcon>
+                      <LabelIcon>
+                        <FaServer size={12} />
+                      </LabelIcon>
                       {messages.settings.provider}
                     </Label>
-                    <ProviderRadioGroup role="radiogroup" aria-labelledby="provider-label">
+                    <ProviderRadioGroup
+                      role="radiogroup"
+                      aria-labelledby="provider-label"
+                    >
                       {PROVIDER_IDS.map((id) => {
                         const ProviderIcon = providerIcons[id];
                         return (
@@ -693,9 +735,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                   </FieldGroup>
 
                   <FieldGroup $gap="xs">
-                    <FieldLabelRow $align="center" $justify="space-between" $gap="md">
+                    <FieldLabelRow
+                      $align="center"
+                      $justify="space-between"
+                      $gap="md"
+                    >
                       <Label htmlFor="api-key">
-                        <LabelIcon><FaKey size={12} /></LabelIcon>
+                        <LabelIcon>
+                          <FaKey size={12} />
+                        </LabelIcon>
                         {messages.settings.apiKey}
                       </Label>
                       {providerHasApiKey && (
@@ -720,14 +768,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                     <HelperText>
                       {providerHasApiKey
                         ? messages.settings.apiKeyKeepHelp
-                        : messages.settings.apiKeyStorageHelpForProvider(activeProvider.name)}
+                        : messages.settings.apiKeyStorageHelpForProvider(
+                            activeProvider.name,
+                          )}
                     </HelperText>
                     {saveError && <ErrorText>{saveError}</ErrorText>}
                   </FieldGroup>
 
                   <FieldGroup $gap="xs">
                     <Label htmlFor="api-endpoint">
-                      <LabelIcon><FaServer size={12} /></LabelIcon>
+                      <LabelIcon>
+                        <FaServer size={12} />
+                      </LabelIcon>
                       {messages.settings.apiEndpoint}
                     </Label>
                     <Input
@@ -737,7 +789,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                       onChange={(e) => setApiEndpoint(e.target.value)}
                       placeholder={activeProvider.defaultEndpoint}
                     />
-                    <HelperText>{messages.settings.apiEndpointHelpForProvider(activeProvider.name)}</HelperText>
+                    <HelperText>
+                      {messages.settings.apiEndpointHelpForProvider(
+                        activeProvider.name,
+                      )}
+                    </HelperText>
                   </FieldGroup>
 
                   <FieldGroup $gap="xs">
@@ -754,7 +810,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                         ) : (
                           availableModels.map((item) => (
                             <option key={item.id} value={item.id}>
-                              {item.displayName ? `${item.displayName} (${item.id})` : item.id}
+                              {item.displayName
+                                ? `${item.displayName} (${item.id})`
+                                : item.id}
                             </option>
                           ))
                         )}
@@ -780,7 +838,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                     </ModelControlRow>
                     <HelperText>
                       {availableModels.length > 0
-                        ? messages.settings.modelsAvailable(availableModels.length)
+                        ? messages.settings.modelsAvailable(
+                            availableModels.length,
+                          )
                         : messages.settings.modelsRefreshHelp}
                     </HelperText>
                     {modelError && <ErrorText>{modelError}</ErrorText>}
@@ -790,7 +850,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             </SectionScroll>
 
             <SectionActions $justify="flex-end" $align="center" $gap="sm">
-              <CancelButton onClick={onClose}>{messages.settings.cancel}</CancelButton>
+              <CancelButton onClick={onClose}>
+                {messages.settings.cancel}
+              </CancelButton>
               <SaveButton onClick={handleSave} disabled={isSaving}>
                 <FaFloppyDisk size={13} />
                 {isSaving ? messages.settings.saving : messages.settings.save}

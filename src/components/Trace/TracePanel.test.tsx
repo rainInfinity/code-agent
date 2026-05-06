@@ -74,6 +74,7 @@ const createTurn = (conversationId: string, turnNumber: number): TurnTrace => ({
   response: {
     content: `trace response ${turnNumber}`,
   },
+  tools: [],
 });
 
 const createConversation = (id: string, turnCount: number): Conversation => ({

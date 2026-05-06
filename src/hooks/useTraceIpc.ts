@@ -4,8 +4,10 @@ import {
   getTraceDockingState,
   onAgentComplete,
   onAgentTurn,
+  onAgentTurnComplete,
   onStreamDelta,
   onThinkingDelta,
+  onToolTrace,
   onTraceConversationChanged,
   onTraceDockingChanged,
   onTracePrompt,
@@ -15,7 +17,24 @@ import {
 } from '@/hooks/useIpc';
 import { useTraceStore } from '@/stores/traceStore';
 import { CHAT_HISTORY_STORAGE_KEY, useChatStore } from '@/stores/chatStore';
-import type { Conversation, TraceState } from '@/types';
+import type {
+  AgentTurnCompleteEvent,
+  AgentTurnEvent,
+  Conversation,
+  StreamEvent,
+  StreamThinkingEvent,
+  ToolTraceEvent,
+  TracePromptEvent,
+  TraceState,
+  TraceThinkingEvent,
+  TurnTrace,
+} from '@/types';
+import {
+  applyToolTraceToMessage,
+  applyToolTraceToTurn,
+  createTurnTrace,
+  getTurnTraceStatus,
+} from '@/utils/traceUtils';
 
 const TRACE_FLUSH_INTERVAL_MS = 50;
 
@@ -25,6 +44,119 @@ const getAgentStatusFromTurns = (
   const latestTurn = turns?.[turns.length - 1];
   if (!latestTurn) return 'idle';
   return latestTurn.status;
+};
+
+const updateLatestTraceTurn = (
+  conversationId: string,
+  updater: (turn: TurnTrace) => TurnTrace,
+) => {
+  useChatStore.getState().updateLatestTurn(conversationId, updater);
+};
+
+const recordTraceTurnStart = (event: AgentTurnEvent) => {
+  useChatStore.getState().appendTurn(event.conversationId, createTurnTrace(event));
+  useTraceStore.setState({
+    conversationId: event.conversationId,
+    sessionId: event.sessionId,
+    agentStatus: 'running',
+  });
+};
+
+const recordTracePrompt = (event: TracePromptEvent) => {
+  updateLatestTraceTurn(event.conversationId, (turn) => ({
+    ...turn,
+    prompt: {
+      systemPrompt: event.systemPrompt,
+      messages: event.messages,
+      tools: event.tools,
+    },
+  }));
+};
+
+const recordTraceThinkingStart = (event: TraceThinkingEvent) => {
+  updateLatestTraceTurn(event.conversationId, (turn) => ({
+    ...turn,
+    thinking: {
+      ...turn.thinking,
+      startTime: turn.thinking.startTime ?? Date.now(),
+      status: 'streaming',
+    },
+  }));
+};
+
+const recordTraceThinkingEnd = (event: TraceThinkingEvent) => {
+  updateLatestTraceTurn(event.conversationId, (turn) => ({
+    ...turn,
+    thinking: {
+      ...turn.thinking,
+      endTime: Date.now(),
+      status: turn.thinking.content ? 'complete' : 'idle',
+    },
+  }));
+};
+
+const recordTraceThinkingDelta = (event: StreamThinkingEvent) => {
+  updateLatestTraceTurn(event.conversationId, (turn) => ({
+    ...turn,
+    thinking: {
+      ...turn.thinking,
+      content: `${turn.thinking.content}${event.delta}`,
+      startTime: turn.thinking.startTime ?? Date.now(),
+      status: 'streaming',
+    },
+  }));
+};
+
+const recordTraceResponseDelta = (event: StreamEvent) => {
+  updateLatestTraceTurn(event.conversationId, (turn) => ({
+    ...turn,
+    response: {
+      ...turn.response,
+      content: `${turn.response.content}${event.delta}`,
+      startTime: turn.response.startTime ?? Date.now(),
+    },
+  }));
+};
+
+const recordTraceTool = (event: ToolTraceEvent) => {
+  updateLatestTraceTurn(event.conversationId, (turn) => applyToolTraceToTurn(turn, event));
+
+  const conversation = useChatStore
+    .getState()
+    .conversations.find((item) => item.id === event.conversationId);
+  const message = conversation?.messages.find((item) => item.id === event.messageId);
+  if (!message) return;
+
+  useChatStore
+    .getState()
+    .updateMessage(event.conversationId, event.messageId, applyToolTraceToMessage(message, event));
+};
+
+const recordTraceTurnComplete = (event: AgentTurnCompleteEvent) => {
+  const completedAt = Date.now();
+  updateLatestTraceTurn(event.conversationId, (turn) => ({
+    ...turn,
+    endTime: completedAt,
+    status: getTurnTraceStatus(event.status),
+    thinking: {
+      ...turn.thinking,
+      status: turn.thinking.status === 'streaming' ? 'complete' : turn.thinking.status,
+      endTime: turn.thinking.endTime ?? completedAt,
+    },
+    response: {
+      ...turn.response,
+      endTime: completedAt,
+    },
+    usage: {
+      inputTokens: event.inputTokens,
+      outputTokens: event.outputTokens,
+    },
+  }));
+
+  useTraceStore.setState({
+    sessionId: event.sessionId,
+    agentStatus: event.status,
+  });
 };
 
 const mergeSyncedConversations = (incoming: Conversation[]) => {
@@ -111,14 +243,13 @@ export function useTraceIpc() {
 
     const flushBuffers = () => {
       flushTimer = undefined;
-      const store = useTraceStore.getState();
       thinkingBuffer.forEach((delta, key) => {
         const [conversationId, messageId] = key.split('|');
-        store.appendThinking({ conversationId, messageId, delta });
+        recordTraceThinkingDelta({ conversationId, messageId, delta });
       });
       responseBuffer.forEach((delta, key) => {
         const [conversationId, messageId] = key.split('|');
-        store.appendResponse({ conversationId, messageId, delta });
+        recordTraceResponseDelta({ conversationId, messageId, delta });
       });
       thinkingBuffer.clear();
       responseBuffer.clear();
@@ -159,12 +290,12 @@ export function useTraceIpc() {
           syncTraceStateFromConversations(useTraceStore.getState().conversationId);
         }),
         onTraceDockingChanged((event) => useTraceStore.getState().setDocking(event)),
-        onAgentTurn((event) => useTraceStore.getState().startTurn(event)),
-        onTracePrompt((event) => useTraceStore.getState().addPrompt(event)),
-        onTraceThinkingStart((event) => useTraceStore.getState().startThinking(event)),
+        onAgentTurn(recordTraceTurnStart),
+        onTracePrompt(recordTracePrompt),
+        onTraceThinkingStart(recordTraceThinkingStart),
         onTraceThinkingEnd((event) => {
           flushNow();
-          useTraceStore.getState().endThinking(event);
+          recordTraceThinkingEnd(event);
         }),
         onThinkingDelta((event) =>
           appendBuffered(thinkingBuffer, event.conversationId, event.messageId, event.delta),
@@ -172,9 +303,17 @@ export function useTraceIpc() {
         onStreamDelta((event) =>
           appendBuffered(responseBuffer, event.conversationId, event.messageId, event.delta),
         ),
+        onToolTrace(recordTraceTool),
+        onAgentTurnComplete((event) => {
+          flushNow();
+          recordTraceTurnComplete(event);
+        }),
         onAgentComplete((event) => {
           flushNow();
-          useTraceStore.getState().endTurn(event);
+          useTraceStore.setState({
+            sessionId: event.sessionId,
+            agentStatus: event.status,
+          });
         }),
       ]);
 

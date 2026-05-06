@@ -4,6 +4,7 @@ import styled from 'styled-components';
 import { FaChevronDown, FaChevronRight } from 'react-icons/fa6';
 import { messages } from '@/i18n';
 import type { TurnTrace } from '@/types';
+import { summarizeContentBlocks } from '@/utils/traceUtils';
 import { TraceCopyButton } from './TraceCopyButton';
 import { useCopyFeedback } from './useCopyFeedback';
 
@@ -94,9 +95,13 @@ export const PromptView: React.FC<{ prompt: Prompt }> = ({ prompt }) => {
   if (!prompt) return null;
 
   const Chevron = expanded ? FaChevronDown : FaChevronRight;
+  const renderedMessages = prompt.messages.map((message) => ({
+    ...message,
+    renderedContent: summarizeContentBlocks(message.contentBlocks) || message.content || '(empty)',
+  }));
   const promptText = [
     `system: ${prompt.systemPrompt}`,
-    ...prompt.messages.map((message) => `${message.role}: ${message.content}`),
+    ...renderedMessages.map((message) => `${message.role}: ${message.renderedContent}`),
   ].join('\n\n');
 
   return (
@@ -117,22 +122,22 @@ export const PromptView: React.FC<{ prompt: Prompt }> = ({ prompt }) => {
           }}
         />
       </Header>
-      {expanded && (
+      {expanded ? (
         <>
           <Block>{prompt.systemPrompt}</Block>
           <MessageList>
-            {prompt.messages.map((message, index) => (
+            {renderedMessages.map((message, index) => (
               <MessageItem key={`${message.role}-${index}`}>
                 <summary>
-                  {message.role} · {message.content.slice(0, 80)}
-                  {message.content.length > 80 ? '...' : ''}
+                  {message.role} - {message.renderedContent.slice(0, 80)}
+                  {message.renderedContent.length > 80 ? '...' : ''}
                 </summary>
-                <Block>{message.content}</Block>
+                <Block>{message.renderedContent}</Block>
               </MessageItem>
             ))}
           </MessageList>
         </>
-      )}
+      ) : null}
     </Section>
   );
 };

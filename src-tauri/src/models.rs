@@ -352,6 +352,15 @@ pub enum AgentStatus {
     Error,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolTracePhase {
+    Requested,
+    Running,
+    Completed,
+    Failed,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolCallEvent {
@@ -373,10 +382,45 @@ pub struct ToolResultEvent {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ToolTraceEvent {
+    pub conversation_id: String,
+    pub session_id: String,
+    pub turn: usize,
+    pub message_id: String,
+    pub tool_call_id: String,
+    pub name: String,
+    pub input: serde_json::Value,
+    pub phase: ToolTracePhase,
+    pub logical_index: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub batch_id: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub batch_index: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_concurrent: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result: Option<ToolResult>,
+    pub timestamp_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentTurnEvent {
     pub conversation_id: String,
     pub session_id: String,
     pub turn_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentTurnCompleteEvent {
+    pub conversation_id: String,
+    pub session_id: String,
+    pub turn_count: usize,
+    pub status: AgentStatus,
+    pub reason: String,
+    pub input_tokens: u32,
+    pub output_tokens: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]

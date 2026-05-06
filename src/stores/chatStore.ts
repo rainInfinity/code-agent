@@ -57,7 +57,10 @@ function normalizePersistedConversations(conversations: Conversation[]): Convers
   return conversations.map((conversation) => ({
     ...conversation,
     traceEnabled: conversation.traceEnabled ?? false,
-    turns: conversation.turns ?? [],
+    turns: (conversation.turns ?? []).map((turn) => ({
+      ...turn,
+      tools: turn.tools ?? [],
+    })),
     messages: conversation.messages.map((message) =>
       message.status === 'streaming' || message.status === 'pending'
         ? {

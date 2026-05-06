@@ -7,6 +7,7 @@ import type { TurnTrace } from '@/types';
 import { PromptView } from './PromptView';
 import { ThinkingView } from './ThinkingView';
 import { ResponseView } from './ResponseView';
+import { ToolView } from './ToolView';
 
 type TurnCardProps = {
   turn: TurnTrace;
@@ -57,6 +58,8 @@ const Meta = styled.span<{ $status: TurnTrace['status'] }>`
       ? theme.colors.success
       : $status === 'error'
         ? theme.colors.error
+        : $status === 'cancelled' || $status === 'max_turns_reached'
+          ? theme.colors.warning
         : theme.colors.info};
   font-size: ${({ theme }) => theme.typography.fontSize.xs};
 `;
@@ -111,6 +114,12 @@ const formatStartTime = (timestamp: number) =>
     second: '2-digit',
   });
 
+const turnStatusLabel = (status: TurnTrace['status']) => {
+  if (status === 'cancelled') return 'Cancelled';
+  if (status === 'max_turns_reached') return 'Max turns reached';
+  return messages.trace.turnStatus[status];
+};
+
 export const TurnCard: React.FC<TurnCardProps> = ({ turn, expanded, onExpandedChange }) => {
   const [elapsedMs, setElapsedMs] = useState(() => (turn.endTime ?? Date.now()) - turn.startTime);
   const Chevron = expanded ? FaChevronDown : FaChevronRight;
@@ -138,7 +147,7 @@ export const TurnCard: React.FC<TurnCardProps> = ({ turn, expanded, onExpandedCh
           {messages.trace.turn(turn.turnNumber)}
         </Title>
         <MetaGroup>
-          <Meta $status={turn.status}>{messages.trace.turnStatus[turn.status]}</Meta>
+          <Meta $status={turn.status}>{turnStatusLabel(turn.status)}</Meta>
           <TimeMeta title={messages.trace.timePrefix(formatStartTime(turn.startTime))}>
             {messages.trace.timePrefix(formatStartTime(turn.startTime))} · {formatDuration(elapsedMs)}
           </TimeMeta>
@@ -155,6 +164,7 @@ export const TurnCard: React.FC<TurnCardProps> = ({ turn, expanded, onExpandedCh
         <Body>
           <PromptView prompt={turn.prompt} />
           <ThinkingView thinking={turn.thinking} />
+          <ToolView tools={turn.tools} />
           <ResponseView response={turn.response} />
         </Body>
       )}

@@ -4,7 +4,7 @@ import { FaCircle } from 'react-icons/fa6';
 import { messages } from '@/i18n';
 import { useChatStore } from '@/stores/chatStore';
 import { useTraceStore } from '@/stores/traceStore';
-import type { TurnTrace } from '@/types';
+import type { AgentStatus, TurnTrace } from '@/types';
 
 const pulse = keyframes`
   0%, 100% { opacity: 0.45; transform: scale(0.9); }
@@ -30,7 +30,7 @@ const Cluster = styled.div`
   min-width: 0;
 `;
 
-const Dot = styled(FaCircle)<{ $status: 'idle' | 'running' | 'complete' | 'error' }>`
+const Dot = styled(FaCircle)<{ $status: AgentStatus }>`
   flex: 0 0 auto;
   font-size: 7px;
   color: ${({ theme, $status }) =>
@@ -40,9 +40,17 @@ const Dot = styled(FaCircle)<{ $status: 'idle' | 'running' | 'complete' | 'error
         ? theme.colors.success
         : $status === 'error'
           ? theme.colors.error
+          : $status === 'cancelled' || $status === 'max_turns_reached'
+            ? theme.colors.warning
           : theme.colors.textTertiary};
   animation: ${({ $status }) => ($status === 'running' ? pulse : 'none')} 1.2s ease-in-out infinite;
 `;
+
+const statusLabel = (status: AgentStatus) => {
+  if (status === 'cancelled') return 'Cancelled';
+  if (status === 'max_turns_reached') return 'Max turns reached';
+  return messages.trace.status[status];
+};
 
 const EMPTY_TURNS: TurnTrace[] = [];
 
@@ -65,7 +73,7 @@ export const TraceStatusBar: React.FC = () => {
     <Bar>
       <Cluster>
         <Dot $status={status} />
-        <span>{messages.trace.status[status]}</span>
+        <span>{statusLabel(status)}</span>
       </Cluster>
       <Cluster>
         <span>{messages.trace.turnCount(currentTurn?.turnNumber ?? 0, turns.length)}</span>

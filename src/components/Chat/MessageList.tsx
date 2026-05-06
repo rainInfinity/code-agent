@@ -18,9 +18,11 @@ import { useChatStore } from '@/stores/chatStore';
 import { Row, Column } from '@/components/common/Flex';
 import { FoldDivider } from './FoldDivider';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { ToolTraceBlocks } from './ToolTraceBlocks';
 import { useMessageFold } from '@/hooks/useMessageFold';
 import { messages as appMessages } from '@/i18n';
 import type { Message, MessageRole } from '@/types';
+import { getMessageToolTraces } from '@/utils/traceUtils';
 
 const AUTO_FOLLOW_BOTTOM_THRESHOLD_PX = 150;
 const BUTTON_SMOOTH_SCROLL_MS = 700;
@@ -55,10 +57,22 @@ const getStreamingScrollSignature = (
     return lastMessage ? `completed:${lastMessage.id}` : '';
   }
 
+  const toolTraceSignature = (streamingMessage.toolTraces ?? [])
+    .map((toolTrace) =>
+      [
+        toolTrace.toolCallId,
+        toolTrace.status,
+        toolTrace.output?.length ?? 0,
+        toolTrace.error?.length ?? 0,
+      ].join(':'),
+    )
+    .join('|');
+
   return [
     streamingMessage.id,
     streamingMessage.content.length,
     streamingMessage.thinkingContent?.length ?? 0,
+    toolTraceSignature,
     streamingMessage.toolCalls?.length ?? 0,
     streamingMessage.toolResults?.length ?? 0,
   ].join(MESSAGE_META_SEPARATOR);
@@ -288,34 +302,6 @@ const ErrorMessage = styled.div`
   border: 1px solid ${({ theme }) => `${theme.colors.error}30`};
 `;
 
-const ToolPanel = styled.details`
-  margin: ${({ theme }) => theme.spacing.sm} 0;
-  border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.borderRadius.md};
-  background-color: ${({ theme }) => theme.colors.bgSecondary};
-  text-align: left;
-
-  summary {
-    cursor: pointer;
-    padding: ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.md};
-    color: ${({ theme }) => theme.colors.textSecondary};
-    font-size: ${({ theme }) => theme.typography.fontSize.sm};
-    font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
-  }
-`;
-
-const ToolBody = styled.pre`
-  max-height: 260px;
-  overflow: auto;
-  margin: 0;
-  padding: ${({ theme }) => theme.spacing.md};
-  border-top: 1px solid ${({ theme }) => theme.colors.border};
-  color: ${({ theme }) => theme.colors.textPrimary};
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: ${({ theme }) => theme.typography.fontSize.sm};
-`;
-
 const ThinkingPanelShell = styled.div<{ $isThinking: boolean }>`
   margin: ${({ theme }) => theme.spacing.sm} 0;
   border: 1px solid transparent;
@@ -423,18 +409,6 @@ const BlinkingCursor = styled.span`
   }
 `;
 
-const ToolIndicator = styled.div`
-  display: inline-flex;
-  align-items: center;
-  gap: ${({ theme }) => theme.spacing.xs};
-  margin: ${({ theme }) => theme.spacing.sm} 4px;
-  padding: ${({ theme }) => theme.spacing.xs} ${({ theme }) => theme.spacing.sm};
-  border-radius: ${({ theme }) => theme.borderRadius.md};
-  background-color: ${({ theme }) => theme.colors.bgSecondary};
-  color: ${({ theme }) => theme.colors.textSecondary};
-  font-size: ${({ theme }) => theme.typography.fontSize.sm};
-`;
-
 const formatThinkingDuration = (durationMs: number) => {
   if (durationMs < 1000) {
     return appMessages.messages.durationMs(Math.max(0, Math.round(durationMs)));
@@ -533,7 +507,8 @@ const MessageBodyContent: React.FC<{ message: Message; role: MessageRole }> = ({
   message,
   role,
 }) => {
-  const { status, content, thinkingContent, toolCalls, toolResults } = message;
+  const { status, content, thinkingContent } = message;
+  const toolTraces = getMessageToolTraces(message);
 
   if (status === 'error') {
     return (
@@ -564,20 +539,7 @@ const MessageBodyContent: React.FC<{ message: Message; role: MessageRole }> = ({
           />
         )
       ) : null}
-      {toolCalls?.map((toolCall) => (
-        <ToolIndicator key={toolCall.id}>
-          {toolCall.name}
-        </ToolIndicator>
-      ))}
-      {toolResults?.map((toolResult) => (
-        <ToolPanel key={toolResult.toolCallId}>
-          <summary>
-            {toolResult.success ? 'Tool result' : 'Tool error'}:{' '}
-            {toolResult.toolCallId}
-          </summary>
-          <ToolBody>{toolResult.error ?? toolResult.output}</ToolBody>
-        </ToolPanel>
-      ))}
+      {toolTraces.length > 0 ? <ToolTraceBlocks toolTraces={toolTraces} /> : null}
     </>
   );
 };

@@ -5,12 +5,12 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import {
   onAgentComplete,
   onAgentTurn,
+  onAgentTurnComplete,
   onThinkingDelta,
   onStreamDelta,
   onStreamEnd,
   onStreamError,
-  onToolCall,
-  onToolResult,
+  onToolTrace,
   onTracePrompt,
   onTraceThinkingEnd,
   onTraceThinkingStart,
@@ -19,14 +19,21 @@ import {
   stopAgent,
 } from '@/hooks/useIpc';
 import type {
-  AgentCompleteEvent,
+  AgentTurnCompleteEvent,
   AgentTurnEvent,
   StreamEvent,
   StreamThinkingEvent,
   TracePromptEvent,
+  ToolTraceEvent,
   TraceThinkingEvent,
   TurnTrace,
 } from '@/types';
+import {
+  applyToolTraceToMessage,
+  applyToolTraceToTurn,
+  createTurnTrace,
+  getTurnTraceStatus,
+} from '@/utils/traceUtils';
 
 type AgentListenerRegistry = {
   installed: boolean;
@@ -120,20 +127,7 @@ function updateLatestTraceTurn(
 }
 
 function recordTraceTurnStart(event: AgentTurnEvent) {
-  useChatStore.getState().appendTurn(event.conversationId, {
-    turnNumber: event.turnCount,
-    sessionId: event.sessionId,
-    conversationId: event.conversationId,
-    startTime: Date.now(),
-    status: 'running',
-    thinking: {
-      content: '',
-      status: 'idle',
-    },
-    response: {
-      content: '',
-    },
-  });
+  useChatStore.getState().appendTurn(event.conversationId, createTurnTrace(event));
 }
 
 function recordTracePrompt(event: TracePromptEvent) {
@@ -192,12 +186,12 @@ function recordTraceResponseDelta(event: StreamEvent) {
   }));
 }
 
-function recordTraceComplete(event: AgentCompleteEvent) {
+function recordTraceTurnComplete(event: AgentTurnCompleteEvent) {
   const completedAt = Date.now();
   updateLatestTraceTurn(event.conversationId, (turn) => ({
     ...turn,
     endTime: completedAt,
-    status: event.status === 'error' ? 'error' : 'complete',
+    status: getTurnTraceStatus(event.status),
     thinking: {
       ...turn.thinking,
       status: turn.thinking.status === 'streaming' ? 'complete' : turn.thinking.status,
@@ -212,6 +206,33 @@ function recordTraceComplete(event: AgentCompleteEvent) {
       outputTokens: event.outputTokens,
     },
   }));
+}
+
+function recordToolTrace(event: ToolTraceEvent) {
+  updateLatestTraceTurn(event.conversationId, (turn) => applyToolTraceToTurn(turn, event));
+
+  const conversation = useChatStore
+    .getState()
+    .conversations.find((item) => item.id === event.conversationId);
+  const message = conversation?.messages.find((item) => item.id === event.messageId);
+
+  if (message) {
+    useChatStore
+      .getState()
+      .updateMessage(event.conversationId, event.messageId, applyToolTraceToMessage(message, event));
+  }
+
+  if (event.phase === 'requested') {
+    useAgentStore.getState().addPendingToolCall({
+      id: event.toolCallId,
+      name: event.name,
+      input: event.input,
+    });
+  }
+
+  if (event.phase === 'completed' || event.phase === 'failed') {
+    useAgentStore.getState().clearPendingToolCall(event.toolCallId);
+  }
 }
 
 function getAgentListenerRegistry(): AgentListenerRegistry {
@@ -319,47 +340,7 @@ function ensureAgentListeners() {
         setStreaming(false);
         useAgentStore.getState().reset();
       }),
-      onToolCall((event) => {
-        const toolCall = {
-          id: event.toolCallId,
-          name: event.name,
-          input: event.input,
-        };
-        const { addPendingToolCall } = useAgentStore.getState();
-        const { updateMessage } = useChatStore.getState();
-        addPendingToolCall(toolCall);
-        updateMessage(event.conversationId, event.messageId, {
-          toolCalls: [
-            ...(
-              useChatStore
-                .getState()
-                .conversations.find((conversation) => conversation.id === event.conversationId)
-                ?.messages.find((message) => message.id === event.messageId)?.toolCalls ?? []
-            ),
-            toolCall,
-          ],
-        });
-      }),
-      onToolResult((event) => {
-        const { clearPendingToolCall } = useAgentStore.getState();
-        const { updateMessage } = useChatStore.getState();
-        clearPendingToolCall(event.toolCallId);
-        const conversation = useChatStore
-          .getState()
-          .conversations.find((item) => item.id === event.conversationId);
-        const message = conversation?.messages.find((item) => item.id === event.messageId);
-        updateMessage(event.conversationId, event.messageId, {
-          toolResults: [
-            ...(message?.toolResults ?? []),
-            {
-              toolCallId: event.toolCallId,
-              success: event.result.success,
-              output: event.result.output,
-              error: event.result.error,
-            },
-          ],
-        });
-      }),
+      onToolTrace(recordToolTrace),
       onTracePrompt(recordTracePrompt),
       onTraceThinkingStart(recordTraceThinkingStart),
       onTraceThinkingEnd(recordTraceThinkingEnd),
@@ -367,6 +348,7 @@ function ensureAgentListeners() {
         recordTraceTurnStart(event);
         useAgentStore.getState().setTurnCount(event.turnCount);
       }),
+      onAgentTurnComplete(recordTraceTurnComplete),
       onAgentComplete((event) => {
         const { updateMessage, setStreaming } = useChatStore.getState();
         const isError = event.status === 'error';
@@ -378,7 +360,6 @@ function ensureAgentListeners() {
             outputTokens: event.outputTokens,
           },
         });
-        recordTraceComplete(event);
         setStreaming(false);
         useAgentStore.getState().reset();
       }),
@@ -484,6 +465,7 @@ export function useAgent() {
         content: '',
         contentBlocks: [],
         status: 'streaming',
+        toolTraces: [],
       });
 
       setStreaming(true, assistantMsgId);

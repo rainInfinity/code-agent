@@ -6,6 +6,8 @@ use crate::tools::{workspace_root, ToolContext, ToolRegistry};
 use futures_util::future::join_all;
 use serde_json::Value;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::time::Duration;
 use tokio::time::timeout;
 
@@ -14,6 +16,29 @@ struct Batch {
     is_concurrent: bool,
     calls: Vec<ToolCall>,
 }
+
+#[derive(Debug, Clone)]
+pub enum ToolExecutionTracePhase {
+    Running,
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Clone)]
+pub struct ToolExecutionTraceEvent {
+    pub tool_call_id: String,
+    pub name: String,
+    pub input: Value,
+    pub logical_index: usize,
+    pub batch_id: usize,
+    pub batch_index: usize,
+    pub is_concurrent: bool,
+    pub phase: ToolExecutionTracePhase,
+    pub result: Option<ToolResult>,
+    pub timestamp_ms: u128,
+}
+
+pub type ToolExecutionTraceObserver = Arc<dyn Fn(ToolExecutionTraceEvent) + Send + Sync>;
 
 pub struct ToolExecutor {
     timeout_secs: u64,
@@ -41,23 +66,61 @@ impl ToolExecutor {
         calls: &[ToolCall],
         ctx: &ToolContext,
     ) -> Vec<ToolResult> {
+        self.execute_batch_traced(registry, calls, ctx, None).await
+    }
+
+    pub async fn execute_batch_traced(
+        &self,
+        registry: &ToolRegistry,
+        calls: &[ToolCall],
+        ctx: &ToolContext,
+        observer: Option<ToolExecutionTraceObserver>,
+    ) -> Vec<ToolResult> {
         let batches = self.partition_tool_calls(registry, calls);
         let mut results = Vec::with_capacity(calls.len());
+        let mut logical_index = 0usize;
 
-        for batch in batches {
+        for (batch_offset, batch) in batches.into_iter().enumerate() {
+            let batch_id = batch_offset + 1;
             if batch.is_concurrent {
                 results.extend(
                     join_all(
                         batch
                             .calls
                             .iter()
-                            .map(|call| self.execute_one(registry, call, ctx)),
+                            .enumerate()
+                            .map(|(batch_index, call)| {
+                                self.execute_one_traced(
+                                    registry,
+                                    call,
+                                    ctx,
+                                    logical_index + batch_index + 1,
+                                    batch_id,
+                                    batch_index + 1,
+                                    true,
+                                    observer.clone(),
+                                )
+                            }),
                     )
                     .await,
                 );
+                logical_index += batch.calls.len();
             } else {
-                for call in &batch.calls {
-                    results.push(self.execute_one(registry, call, ctx).await);
+                for (batch_index, call) in batch.calls.iter().enumerate() {
+                    results.push(
+                        self.execute_one_traced(
+                            registry,
+                            call,
+                            ctx,
+                            logical_index + 1,
+                            batch_id,
+                            batch_index + 1,
+                            false,
+                            observer.clone(),
+                        )
+                        .await,
+                    );
+                    logical_index += 1;
                 }
             }
         }
@@ -107,67 +170,143 @@ impl ToolExecutor {
         batches
     }
 
-    async fn execute_one(
+    async fn execute_one_traced(
         &self,
         registry: &ToolRegistry,
         call: &ToolCall,
         ctx: &ToolContext,
+        logical_index: usize,
+        batch_id: usize,
+        batch_index: usize,
+        is_concurrent: bool,
+        observer: Option<ToolExecutionTraceObserver>,
     ) -> ToolResult {
+        self.emit_trace(
+            &observer,
+            call,
+            logical_index,
+            batch_id,
+            batch_index,
+            is_concurrent,
+            ToolExecutionTracePhase::Running,
+            None,
+        );
+
         let Some(tool) = registry.get(&call.name) else {
-            return ToolResult {
+            let result = ToolResult {
                 success: false,
                 output: String::new(),
                 error: Some(format!("Unknown tool: {}", call.name)),
             };
+            self.emit_terminal_trace(
+                &observer,
+                call,
+                logical_index,
+                batch_id,
+                batch_index,
+                is_concurrent,
+                &result,
+            );
+            return result;
         };
 
         if let Err(error) = tool.validate_input(&call.input, ctx).await {
-            return ToolResult {
+            let result = ToolResult {
                 success: false,
                 output: String::new(),
                 error: Some(format_validation_error(&call.name, &call.input, &error)),
             };
+            self.emit_terminal_trace(
+                &observer,
+                call,
+                logical_index,
+                batch_id,
+                batch_index,
+                is_concurrent,
+                &result,
+            );
+            return result;
         }
 
         let sandbox_input = match sandbox_input_for_tool(&call.name, &call.input, ctx) {
             Ok(input) => input,
             Err(error) => {
-                return ToolResult {
+                let result = ToolResult {
                     success: false,
                     output: String::new(),
                     error: Some(format_validation_error(&call.name, &call.input, &error)),
                 };
+                self.emit_terminal_trace(
+                    &observer,
+                    call,
+                    logical_index,
+                    batch_id,
+                    batch_index,
+                    is_concurrent,
+                    &result,
+                );
+                return result;
             }
         };
         if let Some(sandbox) = self.sandbox_for_context(ctx) {
             if let Err(error) = sandbox.validate(&call.name, &sandbox_input) {
-                return ToolResult {
+                let result = ToolResult {
                     success: false,
                     output: String::new(),
                     error: Some(format!("Validation: {}", error)),
                 };
+                self.emit_terminal_trace(
+                    &observer,
+                    call,
+                    logical_index,
+                    batch_id,
+                    batch_index,
+                    is_concurrent,
+                    &result,
+                );
+                return result;
             }
         }
 
         match tool.check_permissions(&call.input, ctx).await {
             crate::tools::PermissionResult::Allow => {}
             crate::tools::PermissionResult::Deny(reason) => {
-                return ToolResult {
+                let result = ToolResult {
                     success: false,
                     output: String::new(),
                     error: Some(format!("Permission denied: {}", reason)),
                 };
+                self.emit_terminal_trace(
+                    &observer,
+                    call,
+                    logical_index,
+                    batch_id,
+                    batch_index,
+                    is_concurrent,
+                    &result,
+                );
+                return result;
             }
             crate::tools::PermissionResult::AskUser { description } => {
-                return ToolResult {
+                let result = ToolResult {
                     success: false,
                     output: String::new(),
                     error: Some(format!("Approval required: {}", description)),
                 };
+                self.emit_terminal_trace(
+                    &observer,
+                    call,
+                    logical_index,
+                    batch_id,
+                    batch_index,
+                    is_concurrent,
+                    &result,
+                );
+                return result;
             }
         }
 
-        match timeout(
+        let result = match timeout(
             Duration::from_secs(self.timeout_secs),
             tool.execute(call.input.clone(), ctx),
         )
@@ -193,7 +332,19 @@ impl ToolExecutor {
                     call.name, self.timeout_secs
                 )),
             },
-        }
+        };
+
+        self.emit_terminal_trace(
+            &observer,
+            call,
+            logical_index,
+            batch_id,
+            batch_index,
+            is_concurrent,
+            &result,
+        );
+
+        result
     }
 
     fn truncate_output(&self, result: &mut ToolResult, max_chars: usize) {
@@ -232,6 +383,67 @@ impl ToolExecutor {
             sandbox
         })
     }
+
+    fn emit_trace(
+        &self,
+        observer: &Option<ToolExecutionTraceObserver>,
+        call: &ToolCall,
+        logical_index: usize,
+        batch_id: usize,
+        batch_index: usize,
+        is_concurrent: bool,
+        phase: ToolExecutionTracePhase,
+        result: Option<ToolResult>,
+    ) {
+        if let Some(observer) = observer {
+            observer(ToolExecutionTraceEvent {
+                tool_call_id: call.id.clone(),
+                name: call.name.clone(),
+                input: call.input.clone(),
+                logical_index,
+                batch_id,
+                batch_index,
+                is_concurrent,
+                phase,
+                result,
+                timestamp_ms: current_timestamp_ms(),
+            });
+        }
+    }
+
+    fn emit_terminal_trace(
+        &self,
+        observer: &Option<ToolExecutionTraceObserver>,
+        call: &ToolCall,
+        logical_index: usize,
+        batch_id: usize,
+        batch_index: usize,
+        is_concurrent: bool,
+        result: &ToolResult,
+    ) {
+        let phase = if result.success {
+            ToolExecutionTracePhase::Completed
+        } else {
+            ToolExecutionTracePhase::Failed
+        };
+        self.emit_trace(
+            observer,
+            call,
+            logical_index,
+            batch_id,
+            batch_index,
+            is_concurrent,
+            phase,
+            Some(result.clone()),
+        );
+    }
+}
+
+fn current_timestamp_ms() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default()
 }
 
 fn format_validation_error(tool_name: &str, input: &Value, error: &str) -> String {

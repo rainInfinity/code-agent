@@ -250,18 +250,29 @@ const WorkDirControlRow = styled(Row)`
 const WorkDirSelect = styled.select`
   flex: 1;
   min-width: 0;
-  padding: ${({ theme }) => theme.spacing.xs} ${({ theme }) => theme.spacing.sm};
-  background-color: ${({ theme }) => theme.colors.sidebarHover};
-  border: 1px solid ${({ theme }) => theme.colors.sidebarBorder};
-  border-radius: ${({ theme }) => theme.borderRadius.sm};
-  color: ${({ theme }) => theme.colors.textPrimary};
-  font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  padding: ${({ theme }) => theme.spacing.sm} 44px
+    ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.md};
+  appearance: none;
+  background-color: ${({ theme }) => theme.colors.inputBg};
+  background-image: url("data:image/svg+xml,%3Csvg width='14' height='14' viewBox='0 0 20 20' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M5 7.5L10 12.5L15 7.5' stroke='%239AA4B2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 14px;
+  border: 1px solid ${({ theme }) => theme.colors.inputBorder};
+  border-radius: ${({ theme }) => theme.borderRadius.md};
+  color: ${({ theme }) => theme.colors.inputText};
+  font-size: ${({ theme }) => theme.typography.fontSize.base};
   font-family: ${({ theme }) => theme.typography.fontFamily};
-  cursor: pointer;
+  transition: border-color ${({ theme }) => theme.transitions.fast};
 
   &:focus {
-    border-color: ${({ theme }) => theme.colors.accentPrimary};
+    border-color: ${({ theme }) => theme.colors.inputBorderFocus};
     outline: none;
+  }
+
+  &:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
   }
 `;
 

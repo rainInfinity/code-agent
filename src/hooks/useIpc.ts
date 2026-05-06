@@ -13,12 +13,14 @@ import type {
   StreamErrorEvent,
   ToolCallEvent,
   ToolResultEvent,
+  ToolTraceEvent,
   TracePromptEvent,
   TraceThinkingEvent,
   TraceDockingSide,
   TraceDockingState,
   AgentTurnEvent,
   AgentCompleteEvent,
+  AgentTurnCompleteEvent,
 } from '@/types';
 
 // ─── Commands (Frontend → Backend) ──────────────────────────
@@ -175,6 +177,10 @@ export async function onToolResult(callback: (event: ToolResultEvent) => void): 
   return listen<ToolResultEvent>('tool-result', (e) => callback(e.payload));
 }
 
+export async function onToolTrace(callback: (event: ToolTraceEvent) => void): Promise<UnlistenFn> {
+  return listen<ToolTraceEvent>('tool-trace', (e) => callback(e.payload));
+}
+
 export async function onTracePrompt(callback: (event: TracePromptEvent) => void): Promise<UnlistenFn> {
   return listen<TracePromptEvent>('trace-prompt', (e) => callback(e.payload));
 }
@@ -267,4 +273,10 @@ export async function onAgentComplete(
   callback: (event: AgentCompleteEvent) => void,
 ): Promise<UnlistenFn> {
   return listen<AgentCompleteEvent>('agent-complete', (e) => callback(e.payload));
+}
+
+export async function onAgentTurnComplete(
+  callback: (event: AgentTurnCompleteEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<AgentTurnCompleteEvent>('agent-turn-complete', (e) => callback(e.payload));
 }

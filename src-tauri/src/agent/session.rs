@@ -1,9 +1,9 @@
 use crate::agent::config::AgentConfig;
 use crate::llm::LlmClient;
 use crate::models::{
-    AgentCompleteEvent, AgentStatus, AgentTurnEvent, ChatMessage, ContentBlock, StreamDeltaEvent,
-    StreamThinkingEvent, ToolCallEvent, ToolResult, ToolResultEvent, TracePromptEvent,
-    TraceThinkingEvent,
+    AgentCompleteEvent, AgentStatus, AgentTurnCompleteEvent, AgentTurnEvent, ChatMessage,
+    ContentBlock, StreamDeltaEvent, StreamThinkingEvent, ToolCallEvent, ToolResult,
+    ToolResultEvent, ToolTraceEvent, TracePromptEvent, TraceThinkingEvent,
 };
 use crate::tools::ToolRegistry;
 use std::sync::Arc;
@@ -16,7 +16,9 @@ pub trait AgentEventEmitter: Send + Sync {
     fn emit_thinking_delta(&self, payload: StreamThinkingEvent);
     fn emit_tool_call(&self, payload: ToolCallEvent);
     fn emit_tool_result(&self, payload: ToolResultEvent);
+    fn emit_tool_trace(&self, payload: ToolTraceEvent);
     fn emit_turn(&self, payload: AgentTurnEvent);
+    fn emit_turn_complete(&self, payload: AgentTurnCompleteEvent);
     fn emit_trace_prompt(&self, payload: TracePromptEvent);
     fn emit_trace_thinking_start(&self, payload: TraceThinkingEvent);
     fn emit_trace_thinking_end(&self, payload: TraceThinkingEvent);
@@ -50,8 +52,16 @@ impl AgentEventEmitter for TauriAgentEventEmitter {
         let _ = self.app.emit("tool-result", payload);
     }
 
+    fn emit_tool_trace(&self, payload: ToolTraceEvent) {
+        let _ = self.app.emit("tool-trace", payload);
+    }
+
     fn emit_turn(&self, payload: AgentTurnEvent) {
         let _ = self.app.emit("agent-turn", payload);
+    }
+
+    fn emit_turn_complete(&self, payload: AgentTurnCompleteEvent) {
+        let _ = self.app.emit("agent-turn-complete", payload);
     }
 
     fn emit_trace_prompt(&self, payload: TracePromptEvent) {
@@ -203,7 +213,7 @@ impl AgentSession {
     /// **紧接的下一条** user 消息中有对应的 `tool_result` 块。
     /// 如果拆成多条 user 消息，后续 `tool_use` 会在错误的偏移处查找，
     /// 导致 400 错误。
-    pub fn add_tool_results_batch(&mut self, results: Vec<(String, &ToolResult)>) {
+    pub fn add_tool_results_batch(&mut self, results: Vec<(String, ToolResult)>) {
         if results.is_empty() {
             return;
         }
