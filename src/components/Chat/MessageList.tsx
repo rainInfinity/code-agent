@@ -5,29 +5,20 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import styled, { keyframes } from 'styled-components';
-import {
-  FaCheck,
-  FaChevronDown,
-  FaCopy,
-  FaRobot,
-  FaUser,
-  FaXmark,
-} from 'react-icons/fa6';
+import styled from 'styled-components';
+import { cva } from 'class-variance-authority';
+import { FaChevronDown } from 'react-icons/fa6';
+import { focusRing } from '@/styles/mixins';
 import { useChatStore } from '@/stores/chatStore';
-import { Row, Column } from '@/components/common/Flex';
-import { FoldDivider } from './FoldDivider';
-import { MarkdownRenderer } from './MarkdownRenderer';
-import { ToolTraceBlocks } from './ToolTraceBlocks';
+import { FoldDivider } from '@/components/common/FoldDivider';
+import { MessageItem } from './MessageItem';
 import { useMessageFold } from '@/hooks/useMessageFold';
 import { messages as appMessages } from '@/i18n';
-import type { ContentBlock, Message, MessageRole, ToolTrace, TurnTrace } from '@/types';
-import { getMessageToolTraces } from '@/utils/traceUtils';
-import { getTurnsForAssistantMessage } from '@/utils/turns';
+import { cn } from '@/utils/cn';
 
 const AUTO_FOLLOW_BOTTOM_THRESHOLD_PX = 150;
 const BUTTON_SMOOTH_SCROLL_MS = 700;
-const MESSAGE_META_SEPARATOR = '\u001f';
+const MESSAGE_META_SEPARATOR = '';
 const USER_SCROLL_INTENT_MS = 650;
 
 type ScrollSnapshot = {
@@ -121,130 +112,23 @@ const MessagesContent = styled.div`
   width: 100%;
 `;
 
-const MessageWrapper = styled(Row)<{ $role: string }>`
-  flex-direction: ${({ $role }) => ($role === 'user' ? 'row-reverse' : 'row')};
-  padding: ${({ theme }) => theme.spacing.lg} ${({ theme }) => theme.spacing.xl};
-  max-width: 860px;
-  margin: 0 auto;
-  width: 100%;
-`;
+const scrollButtonVariants = cva('', {
+  variants: {
+    visible: {
+      true: 'scroll-visible',
+      false: 'scroll-hidden',
+    },
+  },
+});
 
-const Avatar = styled.div<{ $role: string }>`
-  width: 32px;
-  height: 32px;
-  min-width: 32px;
-  border-radius: ${({ theme }) => theme.borderRadius.md};
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  flex-shrink: 0;
-
-  background-color: ${({ theme, $role }) =>
-    $role === 'user' ? theme.colors.accentPrimary : theme.colors.bgTertiary};
-  color: ${({ theme, $role }) =>
-    $role === 'user' ? '#fff' : theme.colors.accentPrimary};
-`;
-
-const MessageContent = styled(Column)<{ $role: string }>`
-  flex: 1;
-  min-width: 0;
-  max-width: calc(100% - 44px);
-  font-size: ${({ theme }) => theme.typography.fontSize.base};
-  line-height: ${({ theme }) => theme.typography.lineHeight.relaxed};
-  color: ${({ theme }) => theme.colors.textPrimary};
-  text-align: ${({ $role }) => ($role === 'user' ? 'right' : 'left')};
-`;
-
-const RoleName = styled.div`
-  font-size: ${({ theme }) => theme.typography.fontSize.sm};
-  font-weight: ${({ theme }) => theme.typography.fontWeight.semibold};
-  color: ${({ theme }) => theme.colors.textPrimary};
-  margin-bottom: ${({ theme }) => theme.spacing.xs};
-`;
-
-const MessageBody = styled.div`
-  min-width: 0;
-  min-height: 28px;
-`;
-
-const TurnSectionShell = styled.div`
-  & + & {
-    margin-top: ${({ theme }) => theme.spacing.md};
-    padding-top: ${({ theme }) => theme.spacing.md};
-    border-top: 1px solid ${({ theme }) => theme.colors.border};
-  }
-`;
-
-const UserMessageText = styled.pre`
-  max-height: 360px;
-  overflow-y: auto;
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font: inherit;
-`;
-
-const MessageActions = styled.div<{ $role: string }>`
-  display: flex;
-  justify-content: ${({ $role }) =>
-    $role === 'user' ? 'flex-end' : 'flex-start'};
-  min-height: 28px;
-  padding-top: ${({ theme }) => theme.spacing.xs};
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    opacity ${({ theme }) => theme.transitions.fast},
-    visibility ${({ theme }) => theme.transitions.fast};
-
-  ${MessageWrapper}:hover &,
-  ${MessageWrapper}:focus-within & {
-    opacity: 1;
-    visibility: visible;
-  }
-`;
-
-const CopyButton = styled.button<{ $tone: 'idle' | 'success' | 'error' }>`
-  display: inline-flex;
-  align-items: center;
-  gap: ${({ theme }) => theme.spacing.xs};
-  min-width: 32px;
-  height: 28px;
-  padding: 0 ${({ theme }) => theme.spacing.sm};
-  border-radius: ${({ theme }) => theme.borderRadius.md};
-  color: ${({ theme, $tone }) =>
-    $tone === 'success'
-      ? theme.colors.success
-      : $tone === 'error'
-        ? theme.colors.error
-        : theme.colors.textTertiary};
-  font-size: ${({ theme }) => theme.typography.fontSize.xs};
-  transition:
-    background-color ${({ theme }) => theme.transitions.fast},
-    color ${({ theme }) => theme.transitions.fast};
-
-  &:hover {
-    background-color: ${({ theme }) => theme.colors.bgHover};
-    color: ${({ theme, $tone }) =>
-      $tone === 'success'
-        ? theme.colors.success
-        : $tone === 'error'
-          ? theme.colors.error
-          : theme.colors.textSecondary};
-  }
-
-  &:focus-visible {
-    outline: 2px solid ${({ theme }) => theme.colors.inputBorderFocus};
-    outline-offset: 2px;
-  }
-`;
-
-const ScrollToBottomButton = styled.button<{ $visible: boolean }>`
+const ScrollToBottomButton = styled.button.attrs<{ $visible: boolean }>(
+  ({ $visible }) => ({
+    className: cn(scrollButtonVariants({ visible: $visible })),
+  }),
+)<{ $visible: boolean }>`
   position: absolute;
   bottom: ${({ theme }) => theme.spacing.md};
   left: 50%;
-  transform: translateX(-50%)
-    translateY(${({ $visible }) => ($visible ? '0' : '8px')});
   z-index: 2;
   display: flex;
   align-items: center;
@@ -256,575 +140,37 @@ const ScrollToBottomButton = styled.button<{ $visible: boolean }>`
   border: 1px solid ${({ theme }) => theme.colors.border};
   color: ${({ theme }) => theme.colors.textSecondary};
   box-shadow: ${({ theme }) => theme.shadows.md};
-  opacity: ${({ $visible }) => ($visible ? 1 : 0)};
-  visibility: ${({ $visible }) => ($visible ? 'visible' : 'hidden')};
-  pointer-events: ${({ $visible }) => ($visible ? 'auto' : 'none')};
   transition:
     opacity ${({ theme }) => theme.transitions.fast},
     transform ${({ theme }) => theme.transitions.fast},
     visibility ${({ theme }) => theme.transitions.fast};
+
+  &.scroll-visible {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  &.scroll-hidden {
+    transform: translateX(-50%) translateY(8px);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
 
   &:hover {
     background-color: ${({ theme }) => theme.colors.bgTertiary};
     color: ${({ theme }) => theme.colors.textPrimary};
   }
 
-  &:focus-visible {
-    outline: 2px solid ${({ theme }) => theme.colors.inputBorderFocus};
-    outline-offset: 2px;
-  }
+  ${focusRing}
 
   @media (prefers-reduced-motion: reduce) {
     transition: none;
     transform: translateX(-50%);
   }
 `;
-
-const pulse = keyframes`
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
-`;
-
-const shimmer = keyframes`
-  0% { background-position: 200% 50%; }
-  100% { background-position: 0% 50%; }
-`;
-
-const blink = keyframes`
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-`;
-
-const ThinkingIndicator = styled.div`
-  display: flex;
-  align-items: center;
-  gap: ${({ theme }) => theme.spacing.sm};
-  padding: ${({ theme }) => theme.spacing.sm} 0;
-  color: ${({ theme }) => theme.colors.textSecondary};
-  font-size: ${({ theme }) => theme.typography.fontSize.sm};
-
-  &::before {
-    content: '';
-    width: 42px;
-    height: 4px;
-    border-radius: ${({ theme }) => theme.borderRadius.full};
-    background: linear-gradient(
-      90deg,
-      ${({ theme }) => theme.colors.border},
-      ${({ theme }) => theme.colors.accentPrimary},
-      ${({ theme }) => theme.colors.border}
-    );
-    background-size: 200% 100%;
-    animation: ${shimmer} 1.1s linear infinite;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    &::before {
-      animation: none;
-    }
-  }
-`;
-
-const ErrorMessage = styled.div`
-  color: ${({ theme }) => theme.colors.error};
-  font-size: ${({ theme }) => theme.typography.fontSize.sm};
-  padding: ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.md};
-  background-color: ${({ theme }) => `${theme.colors.error}10`};
-  border-radius: ${({ theme }) => theme.borderRadius.md};
-  border: 1px solid ${({ theme }) => `${theme.colors.error}30`};
-`;
-
-const ThinkingPanelShell = styled.div<{ $isThinking: boolean }>`
-  margin: ${({ theme }) => theme.spacing.sm} 0;
-  border: 1px solid transparent;
-  border-radius: ${({ theme }) => theme.borderRadius.md};
-  background:
-    linear-gradient(
-        ${({ theme }) => theme.colors.bgSecondary},
-        ${({ theme }) => theme.colors.bgSecondary}
-      )
-      padding-box,
-    ${({ theme, $isThinking }) =>
-        $isThinking
-          ? `linear-gradient(90deg, ${theme.colors.border}, ${theme.colors.accentPrimary}, ${theme.colors.border})`
-          : `linear-gradient(${theme.colors.border}, ${theme.colors.border})`}
-      border-box;
-  background-size: ${({ $isThinking }) =>
-    $isThinking ? '100% 100%, 200% 100%' : '100% 100%'};
-  animation: ${({ $isThinking }) => ($isThinking ? shimmer : 'none')} 1.6s
-    linear infinite;
-  text-align: left;
-
-  @media (prefers-reduced-motion: reduce) {
-    animation: none;
-  }
-`;
-
-const ThinkingPanelHeader = styled.button`
-  display: flex;
-  align-items: center;
-  gap: ${({ theme }) => theme.spacing.sm};
-  width: 100%;
-  min-height: 38px;
-  padding: ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.md};
-  color: ${({ theme }) => theme.colors.textSecondary};
-  font-size: ${({ theme }) => theme.typography.fontSize.sm};
-  font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
-  text-align: left;
-
-  &:hover {
-    background-color: ${({ theme }) => theme.colors.bgHover};
-  }
-
-  &:focus-visible {
-    outline: 2px solid ${({ theme }) => theme.colors.inputBorderFocus};
-    outline-offset: -2px;
-  }
-`;
-
-const ThinkingPulse = styled.span`
-  width: 7px;
-  height: 7px;
-  min-width: 7px;
-  border-radius: 50%;
-  background-color: ${({ theme }) => theme.colors.accentPrimary};
-  animation: ${pulse} 1.4s infinite ease-in-out;
-
-  @media (prefers-reduced-motion: reduce) {
-    animation: none;
-  }
-`;
-
-const ThinkingStatusIcon = styled.span`
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 12px;
-  min-width: 12px;
-  color: ${({ theme }) => theme.colors.success};
-`;
-
-const ThinkingHeaderText = styled.span`
-  min-width: 0;
-  flex: 1;
-`;
-
-const ThinkingMeta = styled.span`
-  display: inline-flex;
-  align-items: center;
-  gap: ${({ theme }) => theme.spacing.xs};
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  color: ${({ theme }) => theme.colors.textTertiary};
-  font-size: ${({ theme }) => theme.typography.fontSize.xs};
-`;
-
-const ThinkingBody = styled.pre`
-  max-height: 260px;
-  overflow: auto;
-  margin: 0;
-  padding: ${({ theme }) => theme.spacing.md};
-  border-top: 1px solid ${({ theme }) => theme.colors.border};
-  color: ${({ theme }) => theme.colors.textPrimary};
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: ${({ theme }) => theme.typography.fontSize.sm};
-`;
-
-const BlinkingCursor = styled.span`
-  display: inline-block;
-  color: ${({ theme }) => theme.colors.accentPrimary};
-  animation: ${blink} 0.6s steps(1, end) infinite;
-
-  @media (prefers-reduced-motion: reduce) {
-    animation: none;
-  }
-`;
-
-const formatThinkingDuration = (durationMs: number) => {
-  if (durationMs < 1000) {
-    return appMessages.messages.durationMs(Math.max(0, Math.round(durationMs)));
-  }
-
-  if (durationMs < 60000) {
-    return appMessages.messages.durationS(durationMs / 1000);
-  }
-
-  const totalSeconds = Math.floor(durationMs / 1000);
-  return appMessages.messages.durationMS(
-    Math.floor(totalSeconds / 60),
-    totalSeconds % 60,
-  );
-};
-
-type ThinkingPanelProps = {
-  panelId: string;
-  thinkingContent: string;
-  thinkingStatus: TurnTrace['thinking']['status'];
-  thinkingStartedAt?: number;
-  thinkingEndedAt?: number;
-  responseStartedAt?: number;
-};
-
-const ThinkingPanel: React.FC<ThinkingPanelProps> = ({
-  panelId,
-  thinkingContent,
-  thinkingStatus,
-  thinkingStartedAt,
-  thinkingEndedAt,
-  responseStartedAt,
-}) => {
-  const bodyRef = useRef<HTMLPreElement>(null);
-  const [isOpen, setIsOpen] = useState(false);
-  const [elapsedMs, setElapsedMs] = useState(() =>
-    thinkingStartedAt
-      ? (thinkingEndedAt ?? Date.now()) - thinkingStartedAt
-      : 0,
-  );
-  const isThinking = thinkingStatus === 'streaming';
-  const tokenEstimate = thinkingContent
-    ? Math.round(thinkingContent.length * 0.25)
-    : null;
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const body = bodyRef.current;
-    if (!body || body.scrollHeight <= body.clientHeight) return;
-    body.scrollTop = body.scrollHeight;
-  }, [isOpen, thinkingContent]);
-
-  useEffect(() => {
-    if (!thinkingStartedAt) {
-      setElapsedMs(0);
-      return;
-    }
-
-    const updateElapsed = () => {
-      setElapsedMs((thinkingEndedAt ?? Date.now()) - thinkingStartedAt);
-    };
-
-    updateElapsed();
-    if (!isThinking) return;
-
-    const timer = window.setInterval(updateElapsed, 100);
-    return () => window.clearInterval(timer);
-  }, [isThinking, panelId, thinkingEndedAt, thinkingStartedAt]);
-
-  useEffect(() => {
-    if (responseStartedAt) {
-      setIsOpen(false);
-    }
-  }, [responseStartedAt]);
-
-  return (
-    <ThinkingPanelShell $isThinking={isThinking}>
-      <ThinkingPanelHeader
-        type="button"
-        aria-expanded={isOpen}
-        onClick={() => setIsOpen((value) => !value)}
-      >
-        {isThinking ? (
-          <ThinkingPulse aria-hidden="true" />
-        ) : (
-          <ThinkingStatusIcon aria-hidden="true">
-            <FaCheck size={11} />
-          </ThinkingStatusIcon>
-        )}
-        <ThinkingHeaderText>
-          {isThinking
-            ? appMessages.messages.thinkingInProgress
-            : appMessages.messages.thinkingComplete}
-        </ThinkingHeaderText>
-        <ThinkingMeta>
-          {thinkingStartedAt ? (
-            <span>{formatThinkingDuration(elapsedMs)}</span>
-          ) : null}
-          {tokenEstimate !== null ? (
-            <span>
-              ~{tokenEstimate} {appMessages.messages.tokens}
-            </span>
-          ) : null}
-        </ThinkingMeta>
-      </ThinkingPanelHeader>
-      {isOpen ? (
-        <ThinkingBody ref={bodyRef}>
-          {thinkingContent}
-          {isThinking ? (
-            <BlinkingCursor aria-hidden="true">▌</BlinkingCursor>
-          ) : null}
-        </ThinkingBody>
-      ) : null}
-    </ThinkingPanelShell>
-  );
-};
-
-const ToolResultShell = styled.details<{ $isError: boolean }>`
-  margin: ${({ theme }) => theme.spacing.sm} 0;
-  border: 1px solid
-    ${({ theme, $isError }) =>
-      $isError ? `${theme.colors.error}40` : theme.colors.border};
-  border-radius: ${({ theme }) => theme.borderRadius.md};
-  background: ${({ theme, $isError }) =>
-    $isError ? `${theme.colors.error}10` : theme.colors.bgSecondary};
-  overflow: hidden;
-
-  summary {
-    cursor: pointer;
-    padding: ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.md};
-    color: ${({ theme, $isError }) =>
-      $isError ? theme.colors.error : theme.colors.textSecondary};
-    font-size: ${({ theme }) => theme.typography.fontSize.sm};
-    font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
-    list-style: none;
-  }
-
-  summary::-webkit-details-marker {
-    display: none;
-  }
-`;
-
-const ToolResultContent = styled.pre`
-  margin: 0;
-  padding: ${({ theme }) => theme.spacing.md};
-  border-top: 1px solid ${({ theme }) => theme.colors.border};
-  background: ${({ theme }) => theme.colors.codeBg};
-  color: ${({ theme }) => theme.colors.codeText};
-  font-size: ${({ theme }) => theme.typography.fontSize.xs};
-  font-family: ${({ theme }) => theme.typography.fontFamilyMono};
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 220px;
-  overflow: auto;
-`;
-
-const ToolResultBlock: React.FC<{ block: Extract<ContentBlock, { type: 'tool_result' }> }> = ({
-  block,
-}) => (
-  <ToolResultShell $isError={Boolean(block.isError)}>
-    <summary>
-      {block.isError ? `Tool error (${block.toolUseId})` : `Tool result (${block.toolUseId})`}
-    </summary>
-    <ToolResultContent>{block.content}</ToolResultContent>
-  </ToolResultShell>
-);
-
-const buildFallbackToolTrace = (
-  block: Extract<ContentBlock, { type: 'tool_use' }>,
-  logicalIndex: number,
-): ToolTrace => ({
-  toolCallId: block.id,
-  name: block.name,
-  input: block.input,
-  logicalIndex,
-  status: 'requested',
-});
-
-const TurnSection: React.FC<{
-  turn: TurnTrace;
-  isStreaming: boolean;
-}> = ({ turn, isStreaming }) => (
-  <TurnSectionShell>
-    {turn.thinking.content || turn.thinking.status !== 'idle' ? (
-      <ThinkingPanel
-        panelId={`${turn.assistantMessageId}:${turn.turnNumber}`}
-        thinkingContent={turn.thinking.content}
-        thinkingStatus={turn.thinking.status}
-        thinkingStartedAt={turn.thinking.startTime}
-        thinkingEndedAt={turn.thinking.endTime}
-        responseStartedAt={turn.response.startTime}
-      />
-    ) : null}
-    {turn.tools.length > 0 ? <ToolTraceBlocks toolTraces={turn.tools} /> : null}
-    {turn.response.content ? (
-      <MarkdownRenderer content={turn.response.content} isStreaming={isStreaming} />
-    ) : null}
-  </TurnSectionShell>
-);
-
-const MessageBodyContent: React.FC<{
-  message: Message;
-  role: MessageRole;
-  assistantTurns: TurnTrace[];
-}> = ({
-  message,
-  role,
-  assistantTurns,
-}) => {
-  const { status, content } = message;
-  const contentBlocks = message.contentBlocks ?? [];
-  const toolTraces = getMessageToolTraces(message);
-  const toolTraceMap = new Map(
-    toolTraces.map((toolTrace) => [toolTrace.toolCallId, toolTrace]),
-  );
-  const hasRenderableBlocks = contentBlocks.length > 0;
-  const hasTurnProjection = role === 'assistant' && assistantTurns.length > 0;
-  const hasTurnRenderableContent = assistantTurns.some(
-    (turn) =>
-      turn.thinking.content ||
-      turn.thinking.status !== 'idle' ||
-      turn.tools.length > 0 ||
-      turn.response.content,
-  );
-  const showErrorMessage = status === 'error' && Boolean(content || !hasRenderableBlocks);
-
-  if (hasTurnProjection) {
-    if (status === 'streaming' && !hasTurnRenderableContent) {
-      return (
-        <ThinkingIndicator>
-          <span>{appMessages.messages.thinkingInProgress}</span>
-        </ThinkingIndicator>
-      );
-    }
-
-    return (
-      <>
-        {assistantTurns.map((turn, index) => (
-          <TurnSection
-            key={`${turn.sessionId}:${turn.turnNumber}`}
-            turn={turn}
-            isStreaming={
-              status === 'streaming' &&
-              index === assistantTurns.length - 1 &&
-              turn.status === 'running'
-            }
-          />
-        ))}
-        {status === 'error' && content ? (
-          <ErrorMessage>{content || appMessages.messages.errorFallback}</ErrorMessage>
-        ) : null}
-      </>
-    );
-  }
-
-  if (status === 'streaming' && !hasRenderableBlocks) {
-    return (
-      <ThinkingIndicator>
-        <span>{appMessages.messages.thinkingInProgress}</span>
-      </ThinkingIndicator>
-    );
-  }
-
-  return (
-    <>
-      {contentBlocks.map((block, index) => {
-        switch (block.type) {
-          case 'thinking':
-            return (
-              <ThinkingPanel
-                key={`thinking-${index}`}
-                thinkingContent={block.thinking}
-                thinkingStatus={message.status === 'streaming' && !message.content ? 'streaming' : 'complete'}
-                thinkingStartedAt={message.thinkingStartedAt}
-                panelId={`${message.id}:${index}`}
-              />
-            );
-          case 'text':
-            return role === 'user' ? (
-              <UserMessageText key={`text-${index}`}>{block.text}</UserMessageText>
-            ) : (
-              <MarkdownRenderer
-                key={`text-${index}`}
-                content={block.text}
-                isStreaming={status === 'streaming' && index === contentBlocks.length - 1}
-              />
-            );
-          case 'tool_use': {
-            const toolTrace =
-              toolTraceMap.get(block.id) ?? buildFallbackToolTrace(block, index + 1);
-            return (
-              <ToolTraceBlocks
-                key={`tool-use-${block.id}-${index}`}
-                toolTraces={[toolTrace]}
-              />
-            );
-          }
-          case 'tool_result':
-            return (
-              <ToolResultBlock
-                key={`tool-result-${block.toolUseId}-${index}`}
-                block={block}
-              />
-            );
-          default:
-            return null;
-        }
-      })}
-      {showErrorMessage ? (
-        <ErrorMessage>{content || appMessages.messages.errorFallback}</ErrorMessage>
-      ) : null}
-    </>
-  );
-};
-
-type MessageItemProps = {
-  conversationId: string;
-  messageId: string;
-  role: MessageRole;
-  copyTone: 'idle' | 'success' | 'error';
-  onCopyMessage: (messageId: string, content: string) => void;
-};
-
-const MessageItem: React.FC<MessageItemProps> = React.memo(
-  ({ conversationId, messageId, role, copyTone, onCopyMessage }) => {
-    const conversation = useChatStore((state) =>
-      state.conversations.find((item) => item.id === conversationId),
-    );
-    const message = conversation?.messages.find((item) => item.id === messageId);
-    const assistantTurns =
-      message?.role === 'assistant'
-        ? getTurnsForAssistantMessage(conversation?.turns, message.id)
-        : [];
-
-    if (!message) return null;
-
-    const copyLabel =
-      copyTone === 'success'
-        ? appMessages.messages.copy.success
-        : copyTone === 'error'
-          ? appMessages.messages.copy.error
-          : appMessages.messages.copy.idle;
-
-    return (
-      <MessageWrapper $role={role} $align="flex-start" $gap="md">
-        <Avatar $role={role}>
-          {role === 'user' ? <FaUser size={14} /> : <FaRobot size={14} />}
-        </Avatar>
-        <MessageContent $role={role}>
-          <RoleName>
-            {role === 'user'
-              ? appMessages.messages.roles.user
-              : appMessages.messages.roles.assistant}
-          </RoleName>
-          <MessageBody>
-            <MessageBodyContent
-              message={message}
-              role={role}
-              assistantTurns={assistantTurns}
-            />
-          </MessageBody>
-          <MessageActions $role={role}>
-            <CopyButton
-              type="button"
-              $tone={copyTone}
-              onClick={() => onCopyMessage(message.id, message.content)}
-              title={copyLabel}
-              aria-label={copyLabel}
-            >
-              {copyTone === 'success' ? (
-                <FaCheck size={12} />
-              ) : copyTone === 'error' ? (
-                <FaXmark size={12} />
-              ) : (
-                <FaCopy size={12} />
-              )}
-              <span>{copyLabel}</span>
-            </CopyButton>
-          </MessageActions>
-        </MessageContent>
-      </MessageWrapper>
-    );
-  },
-);
 
 interface MessageListProps {
   conversationId?: string;

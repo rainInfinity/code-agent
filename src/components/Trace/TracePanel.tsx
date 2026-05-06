@@ -23,7 +23,7 @@ import {
   FaXmark,
 } from 'react-icons/fa6';
 import { messages } from '@/i18n';
-import { FoldDivider } from '@/components/Chat/FoldDivider';
+import { FoldDivider } from '@/components/common/FoldDivider';
 import {
   emitTraceClearConversation,
   emitTracePinChanged,

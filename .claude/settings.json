@@ -56,7 +56,10 @@
       "Bash([ -d \"openspec/specs/$cap\" ])",
       "Bash(openspec --help)",
       "Bash(openspec archive *)",
-      "Bash(Get-ChildItem -Path \"F:\\\\project\\\\code-agent\\\\openspec\\\\changes\\\\fix-message-content-block-order\" -Recurse)"
+      "Bash(Get-ChildItem -Path \"F:\\\\project\\\\code-agent\\\\openspec\\\\changes\\\\fix-message-content-block-order\" -Recurse)",
+      "Bash(npm install *)",
+      "Bash(npm test *)",
+      "Bash(Move-Item \"f:\\\\project\\\\code-agent\\\\src\\\\components\\\\Chat\\\\FoldDivider.tsx\" \"f:\\\\project\\\\code-agent\\\\src\\\\components\\\\common\\\\FoldDivider.tsx\")"
     ],
     "additionalDirectories": [
       "F:\\project\\code-agent\\openspec\\changes\\multi-provider-api-config\\specs",
