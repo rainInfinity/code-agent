@@ -114,12 +114,16 @@ fn build_assistant_content_blocks(
             signature: thinking_signature,
         });
     }
-    content_blocks.append(&mut tool_calls);
+
+    // Provider transcripts must not place assistant text after a tool_use block.
+    // If a turn contains both text and tool calls, keep the text before tool_use
+    // so the next user message can satisfy the required tool_result adjacency.
     if !content.is_empty() {
         content_blocks.push(ContentBlock::Text {
             text: content.to_string(),
         });
     }
+    content_blocks.append(&mut tool_calls);
     content_blocks
 }
 
@@ -250,7 +254,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn assistant_content_blocks_place_thinking_before_text_and_tools() {
+    fn assistant_content_blocks_place_text_before_tool_calls_when_both_exist() {
         let blocks = build_assistant_content_blocks(
             "final answer",
             "reasoning",
@@ -268,11 +272,11 @@ mod tests {
         ));
         assert!(matches!(
             &blocks[1],
-            ContentBlock::ToolUse { id, name, .. } if id == "tool-1" && name == "shell"
+            ContentBlock::Text { text } if text == "final answer"
         ));
         assert!(matches!(
             &blocks[2],
-            ContentBlock::Text { text } if text == "final answer"
+            ContentBlock::ToolUse { id, name, .. } if id == "tool-1" && name == "shell"
         ));
     }
 
@@ -317,6 +321,30 @@ mod tests {
         assert!(matches!(
             &blocks[1],
             ContentBlock::Text { text } if text == "final answer"
+        ));
+    }
+
+    #[test]
+    fn assistant_content_blocks_keep_tool_use_as_last_block_when_tool_results_must_follow() {
+        let blocks = build_assistant_content_blocks(
+            "Need approval before running that command.",
+            "",
+            None,
+            vec![ContentBlock::ToolUse {
+                id: "tool-1".to_string(),
+                name: "shell".to_string(),
+                input: json!({ "command": "python heap_sort.py" }),
+            }],
+        );
+
+        assert_eq!(blocks.len(), 2);
+        assert!(matches!(
+            &blocks[0],
+            ContentBlock::Text { text } if text == "Need approval before running that command."
+        ));
+        assert!(matches!(
+            &blocks[1],
+            ContentBlock::ToolUse { id, .. } if id == "tool-1"
         ));
     }
 

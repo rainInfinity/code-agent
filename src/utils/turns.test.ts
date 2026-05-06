@@ -161,6 +161,83 @@ describe('turns', () => {
       'user',
       'assistant',
       'user',
+      'assistant',
     ]);
+  });
+
+  test('keeps failed tool results adjacent to tool_use before any assistant text', () => {
+    const assistantMessageId = 'assistant-failed-tool';
+    const messages: Message[] = [
+      createMessage('user-1', 'user', 'Run the command'),
+      createMessage(assistantMessageId, 'assistant', 'The tool needs approval.'),
+    ];
+
+    const turns: TurnTrace[] = [
+      {
+        turnNumber: 1,
+        sessionId: 'session-failed',
+        conversationId: 'conversation-1',
+        assistantMessageId,
+        startTime: 10,
+        endTime: 20,
+        status: 'error',
+        thinking: {
+          content: 'Trying the command',
+          startTime: 10,
+          endTime: 11,
+          status: 'complete',
+        },
+        response: {
+          content: 'The tool needs approval.',
+          startTime: 12,
+          endTime: 20,
+        },
+        tools: [
+          {
+            toolCallId: 'tool-1',
+            name: 'shell',
+            input: { command: 'python heap_sort.py' },
+            logicalIndex: 1,
+            status: 'failed',
+            error: 'Approval required: This command may modify the workspace or system state.',
+          },
+        ],
+      },
+    ];
+
+    const transcript = buildProviderTranscript(messages, turns);
+
+    expect(transcript).toHaveLength(4);
+    expect(transcript[1]).toMatchObject({
+      role: 'assistant',
+      content: '',
+      contentBlocks: [
+        { type: 'thinking', thinking: 'Trying the command' },
+        {
+          type: 'tool_use',
+          id: 'tool-1',
+          name: 'shell',
+          input: { command: 'python heap_sort.py' },
+        },
+      ],
+    });
+    expect(transcript[2]).toMatchObject({
+      role: 'user',
+      content: '',
+      contentBlocks: [
+        {
+          type: 'tool_result',
+          toolUseId: 'tool-1',
+          content:
+            'Approval required: This command may modify the workspace or system state.',
+          isError: true,
+        },
+      ],
+    });
+    expect(transcript[3]).toMatchObject({
+      role: 'assistant',
+      content: 'The tool needs approval.',
+      contentBlocks: [{ type: 'text', text: 'The tool needs approval.' }],
+    });
   });
 });

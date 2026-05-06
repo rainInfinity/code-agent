@@ -358,4 +358,34 @@ mod tests {
             ContentBlock::Text { text } if text == "final answer"
         ));
     }
+
+    #[test]
+    fn build_preserves_user_tool_result_messages() {
+        let result = PromptEngine::new().build(
+            "code",
+            &[ChatMessage {
+                role: "user".to_string(),
+                content: String::new(),
+                content_blocks: Some(vec![ContentBlock::ToolResult {
+                    tool_use_id: "tool-1".to_string(),
+                    content: "Approval required".to_string(),
+                    is_error: Some(true),
+                }]),
+            }],
+            &[],
+            &context(),
+            PromptBuildOptions::default(),
+        );
+
+        let blocks = result.messages[0].content_blocks.as_ref().unwrap();
+        assert_eq!(blocks.len(), 1);
+        assert!(matches!(
+            &blocks[0],
+            ContentBlock::ToolResult {
+                tool_use_id,
+                content,
+                is_error
+            } if tool_use_id == "tool-1" && content == "Approval required" && *is_error == Some(true)
+        ));
+    }
 }

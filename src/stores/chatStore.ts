@@ -255,6 +255,7 @@ export const useChatStore = create<ChatState>()(
       partialize: (state) => ({
         conversations: normalizePersistedConversations(state.conversations),
         activeConversationId: state.activeConversationId,
+        selectedWorkDir: state.selectedWorkDir,
         isTracePinned: state.isTracePinned,
         isTraceDocked: state.isTraceDocked,
       }),
@@ -273,6 +274,7 @@ export const useChatStore = create<ChatState>()(
           ...current,
           conversations,
           activeConversationId,
+          selectedWorkDir: saved.selectedWorkDir ?? current.selectedWorkDir,
           isStreaming: false,
           streamingMessageId: null,
           isTracePinned: saved.isTracePinned ?? false,

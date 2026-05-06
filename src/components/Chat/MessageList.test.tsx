@@ -1,8 +1,8 @@
 import React from 'react';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ThemeProvider } from 'styled-components';
-import { beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { MessageList } from './MessageList';
 import { messages as appMessages } from '@/i18n';
 import { darkTheme } from '@/styles/theme';
@@ -101,6 +101,10 @@ beforeEach(() => {
     agentStatus: 'idle',
   });
   useSettingsStore.setState({ theme: 'dark' });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('MessageList folding', () => {
@@ -398,6 +402,55 @@ describe('MessageList folding', () => {
     expect(
       toolLabel.compareDocumentPosition(responseText) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  test('lets user interrupt button-initiated smooth scrolling without snapping back to bottom', () => {
+    vi.useFakeTimers();
+
+    const conversation = createConversation('scroll-interrupt', 'scroll-interrupt', 6);
+    useChatStore.setState({
+      conversations: [conversation],
+      activeConversationId: conversation.id,
+    });
+
+    renderWithTheme(<MessageList conversationId={conversation.id} />);
+
+    const list = document.querySelector('.selectable') as HTMLDivElement | null;
+    expect(list).toBeTruthy();
+    if (!list) return;
+
+    Object.defineProperty(list, 'clientHeight', {
+      configurable: true,
+      value: 300,
+    });
+    Object.defineProperty(list, 'scrollHeight', {
+      configurable: true,
+      value: 1_000,
+    });
+
+    act(() => {
+      list.scrollTop = 320;
+      fireEvent.scroll(list);
+    });
+
+    const button = screen.getByRole('button', {
+      name: appMessages.messages.scrollToLatest,
+    });
+
+    act(() => {
+      fireEvent.click(button);
+    });
+
+    expect(list.scrollTop).toBe(1_000);
+
+    act(() => {
+      list.scrollTop = 180;
+      fireEvent.wheel(list);
+      fireEvent.scroll(list);
+      vi.advanceTimersByTime(800);
+    });
+
+    expect(list.scrollTop).toBe(180);
   });
 
   test('does not show fold controls for short conversations', () => {

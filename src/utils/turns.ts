@@ -19,7 +19,7 @@ const toolTraceSort = (left: ToolTrace, right: ToolTrace) =>
   (left.batchIndex ?? 0) - (right.batchIndex ?? 0) ||
   left.toolCallId.localeCompare(right.toolCallId);
 
-const assistantContentBlocksFromTurn = (turn: TurnTrace): ContentBlock[] => {
+const assistantPreludeBlocksFromTurn = (turn: TurnTrace): ContentBlock[] => {
   const blocks: ContentBlock[] = [];
 
   if (turn.thinking.content) {
@@ -35,6 +35,19 @@ const assistantContentBlocksFromTurn = (turn: TurnTrace): ContentBlock[] => {
       id: toolTrace.toolCallId,
       name: toolTrace.name,
       input: toolTrace.input,
+    });
+  }
+
+  return blocks;
+};
+
+const assistantResponseBlocksFromTurn = (turn: TurnTrace): ContentBlock[] => {
+  const blocks: ContentBlock[] = [];
+
+  if (turn.tools.length === 0 && turn.thinking.content) {
+    blocks.push({
+      type: 'thinking',
+      thinking: turn.thinking.content,
     });
   }
 
@@ -305,21 +318,38 @@ export const buildProviderTranscript = (
     }
 
     for (const turn of messageTurns) {
-      const assistantBlocks = assistantContentBlocksFromTurn(turn);
-      if (assistantBlocks.length > 0 || turn.response.content) {
+      const toolUseBlocks = assistantPreludeBlocksFromTurn(turn);
+      const toolResultBlocks = toolResultBlocksFromTurn(turn);
+      const hasTools = turn.tools.length > 0;
+
+      if (hasTools && toolUseBlocks.length > 0) {
         transcript.push({
           role: 'assistant',
-          content: turn.response.content,
-          contentBlocks: assistantBlocks.length > 0 ? assistantBlocks : undefined,
+          content: '',
+          contentBlocks: toolUseBlocks,
         });
       }
 
-      const toolResultBlocks = toolResultBlocksFromTurn(turn);
       if (toolResultBlocks.length > 0) {
         transcript.push({
           role: 'user',
           content: '',
           contentBlocks: toolResultBlocks,
+        });
+      }
+
+      const responseBlocks = hasTools
+        ? assistantResponseBlocksFromTurn(turn)
+        : turn.response.content
+          ? assistantResponseBlocksFromTurn(turn)
+          : toolUseBlocks;
+      const responseContent = turn.response.content;
+
+      if ((!hasTools && responseBlocks.length > 0) || responseContent) {
+        transcript.push({
+          role: 'assistant',
+          content: responseContent,
+          contentBlocks: responseBlocks.length > 0 ? responseBlocks : undefined,
         });
       }
     }

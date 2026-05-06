@@ -242,6 +242,14 @@ export const MessageList: React.FC<MessageListProps> = ({ conversationId }) => {
     [],
   );
 
+  const cancelSmoothScroll = useCallback(() => {
+    smoothScrollUntilRef.current = 0;
+    if (smoothScrollTimeoutRef.current !== null) {
+      window.clearTimeout(smoothScrollTimeoutRef.current);
+      smoothScrollTimeoutRef.current = null;
+    }
+  }, []);
+
   const capturePendingScrollSnapshot = useCallback(() => {
     const el = listRef.current;
     if (!el) return;
@@ -256,7 +264,14 @@ export const MessageList: React.FC<MessageListProps> = ({ conversationId }) => {
   const markUserScrollIntent = useCallback(() => {
     skipScrollEventRef.current = false;
     userScrollIntentUntilRef.current = Date.now() + USER_SCROLL_INTENT_MS;
-  }, []);
+
+    if (Date.now() < smoothScrollUntilRef.current) {
+      cancelSmoothScroll();
+      autoFollowRef.current = false;
+      pendingScrollSnapshotRef.current = null;
+      setShowScrollToBottom(messageCount > 0);
+    }
+  }, [cancelSmoothScroll, messageCount]);
 
   const captureFoldScrollRestore = useCallback(() => {
     const el = listRef.current;
@@ -334,9 +349,7 @@ export const MessageList: React.FC<MessageListProps> = ({ conversationId }) => {
     if (!el) return;
     autoFollowRef.current = true;
 
-    if (smoothScrollTimeoutRef.current !== null) {
-      window.clearTimeout(smoothScrollTimeoutRef.current);
-    }
+    cancelSmoothScroll();
 
     smoothScrollUntilRef.current = Date.now() + BUTTON_SMOOTH_SCROLL_MS;
     smoothScrollTimeoutRef.current = window.setTimeout(() => {
@@ -348,7 +361,7 @@ export const MessageList: React.FC<MessageListProps> = ({ conversationId }) => {
 
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     setShowScrollToBottom(false);
-  }, [scrollToBottomInstant, updateScrollAffordance]);
+  }, [cancelSmoothScroll, scrollToBottomInstant, updateScrollAffordance]);
 
   const handleLoadMore = useCallback(() => {
     captureFoldScrollRestore();

@@ -257,4 +257,60 @@ mod tests {
                 if index == 1 && input_json_delta == "{\"file_path\":\"main.py\"}"
         ));
     }
+
+    #[test]
+    fn serializes_adjacent_tool_use_and_tool_result_messages() {
+        let request = AnthropicProvider.build_chat_request(
+            "claude-test",
+            None,
+            &[
+                ChatMessage {
+                    role: "assistant".to_string(),
+                    content: String::new(),
+                    content_blocks: Some(vec![ContentBlock::ToolUse {
+                        id: "tool-1".to_string(),
+                        name: "shell".to_string(),
+                        input: json!({ "command": "python heap_sort.py" }),
+                    }]),
+                },
+                ChatMessage {
+                    role: "user".to_string(),
+                    content: String::new(),
+                    content_blocks: Some(vec![ContentBlock::ToolResult {
+                        tool_use_id: "tool-1".to_string(),
+                        content: "Approval required".to_string(),
+                        is_error: Some(true),
+                    }]),
+                },
+            ],
+        );
+
+        assert_eq!(
+            request["messages"],
+            json!([
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "tool-1",
+                            "name": "shell",
+                            "input": { "command": "python heap_sort.py" }
+                        }
+                    ]
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "tool-1",
+                            "content": "Approval required",
+                            "is_error": true
+                        }
+                    ]
+                }
+            ])
+        );
+    }
 }

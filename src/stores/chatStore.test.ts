@@ -1,6 +1,10 @@
-import { describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test } from 'vitest';
 import type { Conversation, Message } from '@/types';
-import { normalizePersistedConversations } from './chatStore';
+import {
+  CHAT_HISTORY_STORAGE_KEY,
+  normalizePersistedConversations,
+  useChatStore,
+} from './chatStore';
 
 const createConversation = (message: Message): Conversation => ({
   id: 'conversation-1',
@@ -12,6 +16,19 @@ const createConversation = (message: Message): Conversation => ({
 });
 
 describe('normalizePersistedConversations', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    useChatStore.setState({
+      conversations: [],
+      activeConversationId: null,
+      isStreaming: false,
+      streamingMessageId: null,
+      selectedWorkDir: null,
+      isTracePinned: false,
+      isTraceDocked: false,
+    });
+  });
+
   test('migrates legacy assistant messages into ordered content blocks', () => {
     const message: Message = {
       id: 'assistant-1',
@@ -120,5 +137,42 @@ describe('normalizePersistedConversations', () => {
         },
       ],
     });
+  });
+
+  test('persists selected work directory across app restarts', () => {
+    const selectedWorkDir = 'F:\\project\\ai-test';
+
+    useChatStore.getState().setSelectedWorkDir(selectedWorkDir);
+
+    const persistedRaw = window.localStorage.getItem(CHAT_HISTORY_STORAGE_KEY);
+    expect(persistedRaw).toBeTruthy();
+
+    const persisted = JSON.parse(persistedRaw ?? '{}') as {
+      state?: { selectedWorkDir?: string | null };
+    };
+    expect(persisted.state?.selectedWorkDir).toBe(selectedWorkDir);
+
+    const merge = (useChatStore as typeof useChatStore & {
+      persist: {
+        getOptions: () => {
+          merge: (persisted: unknown, current: unknown) => unknown;
+        };
+      };
+    }).persist.getOptions().merge;
+
+    const merged = merge(
+      { selectedWorkDir },
+      {
+        selectedWorkDir: null,
+        conversations: [],
+        activeConversationId: null,
+        isStreaming: false,
+        streamingMessageId: null,
+        isTracePinned: false,
+        isTraceDocked: false,
+      },
+    ) as { selectedWorkDir: string | null };
+
+    expect(merged.selectedWorkDir).toBe(selectedWorkDir);
   });
 });
