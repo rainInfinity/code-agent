@@ -21,6 +21,8 @@ import {
 import type {
   AgentTurnCompleteEvent,
   AgentTurnEvent,
+  ContentBlock,
+  Message,
   StreamEvent,
   StreamThinkingEvent,
   TracePromptEvent,
@@ -50,6 +52,16 @@ type BufferedDelta = {
 };
 
 type DeltaBuffer = Map<string, BufferedDelta>;
+
+const sanitizeMessageContentBlocksForPrompt = (
+  message: Message,
+): ContentBlock[] | undefined => {
+  const contentBlocks = message.contentBlocks?.filter(
+    (block) => !(message.role === 'assistant' && block.type === 'tool_result'),
+  );
+
+  return contentBlocks && contentBlocks.length > 0 ? contentBlocks : undefined;
+};
 
 const getBufferKey = (conversationId: string, messageId: string) =>
   `${conversationId}:${messageId}`;
@@ -478,7 +490,7 @@ export function useAgent() {
         .map((message) => ({
           role: message.role,
           content: message.content,
-          contentBlocks: message.contentBlocks,
+          contentBlocks: sanitizeMessageContentBlocksForPrompt(message),
         }));
 
       try {

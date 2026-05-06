@@ -42,8 +42,9 @@ pub struct PromptEngine {
 }
 
 fn sanitize_prompt_message(message: &ChatMessage, options: PromptBuildOptions) -> ChatMessage {
+    let is_assistant = message.role == "assistant";
     let preserve_thinking_blocks = options.preserve_thinking_blocks
-        || message.role == "assistant"
+        || is_assistant
             && message
                 .content_blocks
                 .as_ref()
@@ -58,7 +59,8 @@ fn sanitize_prompt_message(message: &ChatMessage, options: PromptBuildOptions) -
         blocks
             .iter()
             .filter(|block| {
-                preserve_thinking_blocks || !matches!(block, ContentBlock::Thinking { .. })
+                (preserve_thinking_blocks || !matches!(block, ContentBlock::Thinking { .. }))
+                    && !(is_assistant && matches!(block, ContentBlock::ToolResult { .. }))
             })
             .cloned()
             .collect::<Vec<_>>()
@@ -306,6 +308,54 @@ mod tests {
         assert!(matches!(
             &blocks[0],
             ContentBlock::Thinking { thinking, .. } if thinking == "reasoning"
+        ));
+    }
+
+    #[test]
+    fn build_omits_assistant_tool_result_blocks_from_prompt_messages() {
+        let result = PromptEngine::new().build(
+            "code",
+            &[ChatMessage {
+                role: "assistant".to_string(),
+                content: "final answer".to_string(),
+                content_blocks: Some(vec![
+                    ContentBlock::Thinking {
+                        thinking: "reasoning".to_string(),
+                        signature: None,
+                    },
+                    ContentBlock::ToolUse {
+                        id: "tool-1".to_string(),
+                        name: "read_file".to_string(),
+                        input: serde_json::json!({ "file_path": "src/main.rs" }),
+                    },
+                    ContentBlock::ToolResult {
+                        tool_use_id: "tool-1".to_string(),
+                        content: "fn main() {}".to_string(),
+                        is_error: Some(false),
+                    },
+                    ContentBlock::Text {
+                        text: "final answer".to_string(),
+                    },
+                ]),
+            }],
+            &[],
+            &context(),
+            PromptBuildOptions::default(),
+        );
+
+        let blocks = result.messages[0].content_blocks.as_ref().unwrap();
+        assert_eq!(blocks.len(), 3);
+        assert!(matches!(
+            &blocks[0],
+            ContentBlock::Thinking { thinking, .. } if thinking == "reasoning"
+        ));
+        assert!(matches!(
+            &blocks[1],
+            ContentBlock::ToolUse { id, name, .. } if id == "tool-1" && name == "read_file"
+        ));
+        assert!(matches!(
+            &blocks[2],
+            ContentBlock::Text { text } if text == "final answer"
         ));
     }
 }

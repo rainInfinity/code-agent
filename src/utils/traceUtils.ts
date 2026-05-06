@@ -186,8 +186,32 @@ export const applyToolTraceToMessage = (
   event: ToolTraceEvent,
 ): Message => {
   const toolTraces = applyToolTraceEvent(message.toolTraces, event);
+  const contentBlocks = [...(message.contentBlocks ?? [])];
+
+  if (event.phase === 'requested') {
+    contentBlocks.push({
+      type: 'tool_use',
+      id: event.toolCallId,
+      name: event.name,
+      input: event.input,
+    });
+  }
+
+  if (event.phase === 'completed' || event.phase === 'failed') {
+    contentBlocks.push({
+      type: 'tool_result',
+      toolUseId: event.toolCallId,
+      content:
+        event.phase === 'failed'
+          ? event.result?.error ?? event.result?.output ?? ''
+          : event.result?.output ?? '',
+      isError: event.phase === 'failed',
+    });
+  }
+
   return {
     ...message,
+    contentBlocks,
     toolTraces,
     ...buildLegacyToolFields(toolTraces),
   };

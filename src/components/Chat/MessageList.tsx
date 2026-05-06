@@ -21,7 +21,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { ToolTraceBlocks } from './ToolTraceBlocks';
 import { useMessageFold } from '@/hooks/useMessageFold';
 import { messages as appMessages } from '@/i18n';
-import type { Message, MessageRole } from '@/types';
+import type { ContentBlock, Message, MessageRole, ToolTrace } from '@/types';
 import { getMessageToolTraces } from '@/utils/traceUtils';
 
 const AUTO_FOLLOW_BOTTOM_THRESHOLD_PX = 150;
@@ -425,13 +425,16 @@ const formatThinkingDuration = (durationMs: number) => {
   );
 };
 
-const ThinkingPanel: React.FC<{ message: Message }> = ({ message }) => {
+const ThinkingPanel: React.FC<{ message: Message; thinkingContent?: string }> = ({
+  message,
+  thinkingContent: thinkingContentProp,
+}) => {
   const bodyRef = useRef<HTMLPreElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(() =>
     message.thinkingStartedAt ? Date.now() - message.thinkingStartedAt : 0,
   );
-  const thinkingContent = message.thinkingContent ?? '';
+  const thinkingContent = thinkingContentProp ?? message.thinkingContent ?? '';
   const isThinking = message.status === 'streaming' && !message.content;
   const tokenEstimate = thinkingContent
     ? Math.round(thinkingContent.length * 0.25)
@@ -503,22 +506,81 @@ const ThinkingPanel: React.FC<{ message: Message }> = ({ message }) => {
   );
 };
 
+const ToolResultShell = styled.details<{ $isError: boolean }>`
+  margin: ${({ theme }) => theme.spacing.sm} 0;
+  border: 1px solid
+    ${({ theme, $isError }) =>
+      $isError ? `${theme.colors.error}40` : theme.colors.border};
+  border-radius: ${({ theme }) => theme.borderRadius.md};
+  background: ${({ theme, $isError }) =>
+    $isError ? `${theme.colors.error}10` : theme.colors.bgSecondary};
+  overflow: hidden;
+
+  summary {
+    cursor: pointer;
+    padding: ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.md};
+    color: ${({ theme, $isError }) =>
+      $isError ? theme.colors.error : theme.colors.textSecondary};
+    font-size: ${({ theme }) => theme.typography.fontSize.sm};
+    font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
+    list-style: none;
+  }
+
+  summary::-webkit-details-marker {
+    display: none;
+  }
+`;
+
+const ToolResultContent = styled.pre`
+  margin: 0;
+  padding: ${({ theme }) => theme.spacing.md};
+  border-top: 1px solid ${({ theme }) => theme.colors.border};
+  background: ${({ theme }) => theme.colors.codeBg};
+  color: ${({ theme }) => theme.colors.codeText};
+  font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  font-family: ${({ theme }) => theme.typography.fontFamilyMono};
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow: auto;
+`;
+
+const ToolResultBlock: React.FC<{ block: Extract<ContentBlock, { type: 'tool_result' }> }> = ({
+  block,
+}) => (
+  <ToolResultShell $isError={Boolean(block.isError)}>
+    <summary>
+      {block.isError ? `Tool error (${block.toolUseId})` : `Tool result (${block.toolUseId})`}
+    </summary>
+    <ToolResultContent>{block.content}</ToolResultContent>
+  </ToolResultShell>
+);
+
+const buildFallbackToolTrace = (
+  block: Extract<ContentBlock, { type: 'tool_use' }>,
+  logicalIndex: number,
+): ToolTrace => ({
+  toolCallId: block.id,
+  name: block.name,
+  input: block.input,
+  logicalIndex,
+  status: 'requested',
+});
+
 const MessageBodyContent: React.FC<{ message: Message; role: MessageRole }> = ({
   message,
   role,
 }) => {
-  const { status, content, thinkingContent } = message;
+  const { status, content } = message;
+  const contentBlocks = message.contentBlocks ?? [];
   const toolTraces = getMessageToolTraces(message);
+  const toolTraceMap = new Map(
+    toolTraces.map((toolTrace) => [toolTrace.toolCallId, toolTrace]),
+  );
+  const hasRenderableBlocks = contentBlocks.length > 0;
+  const showErrorMessage = status === 'error' && Boolean(content || !hasRenderableBlocks);
 
-  if (status === 'error') {
-    return (
-      <ErrorMessage>
-        {content || appMessages.messages.errorFallback}
-      </ErrorMessage>
-    );
-  }
-
-  if (status === 'streaming' && !content && !thinkingContent) {
+  if (status === 'streaming' && !hasRenderableBlocks) {
     return (
       <ThinkingIndicator>
         <span>{appMessages.messages.thinkingInProgress}</span>
@@ -528,18 +590,50 @@ const MessageBodyContent: React.FC<{ message: Message; role: MessageRole }> = ({
 
   return (
     <>
-      {thinkingContent ? <ThinkingPanel message={message} /> : null}
-      {content ? (
-        role === 'user' ? (
-          <UserMessageText>{content}</UserMessageText>
-        ) : (
-          <MarkdownRenderer
-            content={content}
-            isStreaming={status === 'streaming'}
-          />
-        )
+      {contentBlocks.map((block, index) => {
+        switch (block.type) {
+          case 'thinking':
+            return (
+              <ThinkingPanel
+                key={`thinking-${index}`}
+                message={message}
+                thinkingContent={block.thinking}
+              />
+            );
+          case 'text':
+            return role === 'user' ? (
+              <UserMessageText key={`text-${index}`}>{block.text}</UserMessageText>
+            ) : (
+              <MarkdownRenderer
+                key={`text-${index}`}
+                content={block.text}
+                isStreaming={status === 'streaming' && index === contentBlocks.length - 1}
+              />
+            );
+          case 'tool_use': {
+            const toolTrace =
+              toolTraceMap.get(block.id) ?? buildFallbackToolTrace(block, index + 1);
+            return (
+              <ToolTraceBlocks
+                key={`tool-use-${block.id}-${index}`}
+                toolTraces={[toolTrace]}
+              />
+            );
+          }
+          case 'tool_result':
+            return (
+              <ToolResultBlock
+                key={`tool-result-${block.toolUseId}-${index}`}
+                block={block}
+              />
+            );
+          default:
+            return null;
+        }
+      })}
+      {showErrorMessage ? (
+        <ErrorMessage>{content || appMessages.messages.errorFallback}</ErrorMessage>
       ) : null}
-      {toolTraces.length > 0 ? <ToolTraceBlocks toolTraces={toolTraces} /> : null}
     </>
   );
 };

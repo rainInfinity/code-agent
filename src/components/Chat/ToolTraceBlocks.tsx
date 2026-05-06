@@ -1,5 +1,5 @@
 import type React from 'react';
-import styled from 'styled-components';
+import styled, { keyframes } from 'styled-components';
 import type { ToolTrace } from '@/types';
 
 const List = styled.div`
@@ -44,9 +44,15 @@ const SummaryText = styled.span`
   font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
 `;
 
+const pulse = keyframes`
+  0%, 100% { opacity: 0.45; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1); }
+`;
+
 const Status = styled.span<{ $status: ToolTrace['status'] }>`
   display: inline-flex;
   align-items: center;
+  gap: ${({ theme }) => theme.spacing.xs};
   padding: 2px 8px;
   border-radius: ${({ theme }) => theme.borderRadius.full};
   background: ${({ theme, $status }) =>
@@ -63,6 +69,19 @@ const Status = styled.span<{ $status: ToolTrace['status'] }>`
         : theme.colors.info};
   font-size: ${({ theme }) => theme.typography.fontSize.xs};
   white-space: nowrap;
+`;
+
+const StatusDot = styled.span<{ $active: boolean }>`
+  width: 6px;
+  height: 6px;
+  min-width: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: ${({ $active }) => ($active ? pulse : 'none')} 1.1s ease-in-out infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
 `;
 
 
@@ -97,7 +116,7 @@ const CodeBlock = styled.pre`
 `;
 
 const statusLabel: Record<ToolTrace['status'], string> = {
-  requested: 'Requested',
+  requested: 'Running',
   running: 'Running',
   completed: 'Completed',
   failed: 'Failed',
@@ -115,7 +134,15 @@ export const ToolTraceBlocks: React.FC<{ toolTraces: ToolTrace[] }> = ({ toolTra
         <Card key={toolTrace.toolCallId}>
           <summary>
             <SummaryMain>
-              <Status $status={toolTrace.status}>{statusLabel[toolTrace.status]}</Status>
+              <Status $status={toolTrace.status}>
+                <StatusDot
+                  $active={
+                    toolTrace.status === 'requested' || toolTrace.status === 'running'
+                  }
+                  aria-hidden="true"
+                />
+                {statusLabel[toolTrace.status]}
+              </Status>
               <SummaryText>{toolTrace.name}</SummaryText>
             </SummaryMain>
           </summary>

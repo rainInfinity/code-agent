@@ -103,6 +103,143 @@ beforeEach(() => {
 });
 
 describe('MessageList folding', () => {
+  test('renders tool blocks before the final text when contentBlocks lead with tool_use', () => {
+    const conversation: Conversation = {
+      id: 'tool-order',
+      title: 'tool-order',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      turns: [],
+      messages: [
+        createMessage('tool-order-user', 'user', 'Run a tool'),
+        {
+          id: 'tool-order-assistant',
+          role: 'assistant',
+          content: 'I found the workspace.',
+          contentBlocks: [
+            { type: 'tool_use', id: 'tool-1', name: 'shell', input: { command: 'pwd' } },
+            { type: 'tool_result', toolUseId: 'tool-1', content: '/workspace', isError: false },
+            { type: 'text', text: 'I found the workspace.' },
+          ],
+          status: 'complete',
+          timestamp: Date.now(),
+          toolTraces: [
+            {
+              toolCallId: 'tool-1',
+              name: 'shell',
+              input: { command: 'pwd' },
+              logicalIndex: 1,
+              status: 'completed',
+              output: '/workspace',
+            },
+          ],
+          toolCalls: [{ id: 'tool-1', name: 'shell', input: { command: 'pwd' } }],
+          toolResults: [{ toolCallId: 'tool-1', success: true, output: '/workspace' }],
+        },
+      ],
+    };
+
+    useChatStore.setState({
+      conversations: [conversation],
+      activeConversationId: conversation.id,
+    });
+
+    renderWithTheme(<MessageList conversationId={conversation.id} />);
+
+    const toolLabel = screen.getByText('shell');
+    const responseText = screen.getByText('I found the workspace.');
+
+    expect(
+      toolLabel.compareDocumentPosition(responseText) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  test('shows Running status for active tool calls in the chat timeline', () => {
+    const conversation: Conversation = {
+      id: 'tool-running',
+      title: 'tool-running',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      turns: [],
+      messages: [
+        createMessage('tool-running-user', 'user', 'Run a tool'),
+        {
+          id: 'tool-running-assistant',
+          role: 'assistant',
+          content: '',
+          contentBlocks: [
+            { type: 'tool_use', id: 'tool-1', name: 'shell', input: { command: 'pwd' } },
+          ],
+          status: 'streaming',
+          timestamp: Date.now(),
+          toolTraces: [
+            {
+              toolCallId: 'tool-1',
+              name: 'shell',
+              input: { command: 'pwd' },
+              logicalIndex: 1,
+              status: 'requested',
+            },
+          ],
+        },
+      ],
+    };
+
+    useChatStore.setState({
+      conversations: [conversation],
+      activeConversationId: conversation.id,
+    });
+
+    renderWithTheme(<MessageList conversationId={conversation.id} />);
+
+    expect(screen.getByText('Running')).toBeTruthy();
+    expect(screen.getByText('shell')).toBeTruthy();
+  });
+
+  test('keeps previously rendered blocks visible when the message ends in error', () => {
+    const conversation: Conversation = {
+      id: 'tool-error',
+      title: 'tool-error',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      turns: [],
+      messages: [
+        createMessage('tool-error-user', 'user', 'Run a tool'),
+        {
+          id: 'tool-error-assistant',
+          role: 'assistant',
+          content: 'API error (400 Bad Request)',
+          contentBlocks: [
+            { type: 'tool_use', id: 'tool-1', name: 'shell', input: { command: 'pwd' } },
+            { type: 'text', text: 'Partial answer before the failure.' },
+          ],
+          status: 'error',
+          timestamp: Date.now(),
+          toolTraces: [
+            {
+              toolCallId: 'tool-1',
+              name: 'shell',
+              input: { command: 'pwd' },
+              logicalIndex: 1,
+              status: 'requested',
+            },
+          ],
+        },
+      ],
+    };
+
+    useChatStore.setState({
+      conversations: [conversation],
+      activeConversationId: conversation.id,
+    });
+
+    renderWithTheme(<MessageList conversationId={conversation.id} />);
+
+    expect(screen.getByText('shell')).toBeTruthy();
+    expect(screen.getByText('Partial answer before the failure.')).toBeTruthy();
+    expect(screen.getByText('API error (400 Bad Request)')).toBeTruthy();
+  });
+
   test('does not show fold controls for short conversations', () => {
     const conversation = createConversation('short', 'short', 3);
     useChatStore.setState({

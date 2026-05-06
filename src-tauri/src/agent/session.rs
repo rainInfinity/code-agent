@@ -114,12 +114,12 @@ fn build_assistant_content_blocks(
             signature: thinking_signature,
         });
     }
+    content_blocks.append(&mut tool_calls);
     if !content.is_empty() {
         content_blocks.push(ContentBlock::Text {
             text: content.to_string(),
         });
     }
-    content_blocks.append(&mut tool_calls);
     content_blocks
 }
 
@@ -268,11 +268,55 @@ mod tests {
         ));
         assert!(matches!(
             &blocks[1],
-            ContentBlock::Text { text } if text == "final answer"
+            ContentBlock::ToolUse { id, name, .. } if id == "tool-1" && name == "shell"
         ));
         assert!(matches!(
             &blocks[2],
+            ContentBlock::Text { text } if text == "final answer"
+        ));
+    }
+
+    #[test]
+    fn assistant_content_blocks_place_tool_calls_after_thinking_without_text() {
+        let blocks = build_assistant_content_blocks(
+            "",
+            "reasoning",
+            None,
+            vec![ContentBlock::ToolUse {
+                id: "tool-1".to_string(),
+                name: "shell".to_string(),
+                input: json!({ "command": "pwd" }),
+            }],
+        );
+
+        assert_eq!(blocks.len(), 2);
+        assert!(matches!(
+            &blocks[0],
+            ContentBlock::Thinking { thinking, .. } if thinking == "reasoning"
+        ));
+        assert!(matches!(
+            &blocks[1],
             ContentBlock::ToolUse { id, name, .. } if id == "tool-1" && name == "shell"
+        ));
+    }
+
+    #[test]
+    fn assistant_content_blocks_place_text_after_thinking_without_tool_calls() {
+        let blocks = build_assistant_content_blocks(
+            "final answer",
+            "reasoning",
+            None,
+            Vec::new(),
+        );
+
+        assert_eq!(blocks.len(), 2);
+        assert!(matches!(
+            &blocks[0],
+            ContentBlock::Thinking { thinking, .. } if thinking == "reasoning"
+        ));
+        assert!(matches!(
+            &blocks[1],
+            ContentBlock::Text { text } if text == "final answer"
         ));
     }
 

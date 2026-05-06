@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import type { Message, ToolTraceEvent } from '@/types';
 import {
+  applyToolTraceToMessage,
   applyToolTraceEvent,
   buildLegacyToolFields,
   completeTurnTrace,
@@ -177,5 +178,54 @@ describe('traceUtils', () => {
     ]);
     expect(summarizeContentBlocks(message.contentBlocks)).toContain('Tool use: shell');
     expect(summarizeContentBlocks(message.contentBlocks)).toContain('Tool result: /workspace');
+  });
+
+  test('appends tool_use and tool_result content blocks for tool trace events', () => {
+    const baseMessage: Message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      content: '',
+      contentBlocks: [{ type: 'thinking', thinking: 'reasoning' }],
+      status: 'streaming',
+      timestamp: Date.now(),
+      toolTraces: [],
+    };
+
+    const requestedMessage = applyToolTraceToMessage(
+      baseMessage,
+      createToolTraceEvent({
+        toolCallId: 'tool-1',
+        name: 'shell',
+        phase: 'requested',
+        logicalIndex: 1,
+        input: { command: 'pwd' },
+      }),
+    );
+
+    expect(requestedMessage.contentBlocks).toEqual([
+      { type: 'thinking', thinking: 'reasoning' },
+      { type: 'tool_use', id: 'tool-1', name: 'shell', input: { command: 'pwd' } },
+    ]);
+
+    const completedMessage = applyToolTraceToMessage(
+      requestedMessage,
+      createToolTraceEvent({
+        toolCallId: 'tool-1',
+        name: 'shell',
+        phase: 'completed',
+        logicalIndex: 1,
+        input: { command: 'pwd' },
+        result: {
+          success: true,
+          output: '/workspace',
+        },
+      }),
+    );
+
+    expect(completedMessage.contentBlocks).toEqual([
+      { type: 'thinking', thinking: 'reasoning' },
+      { type: 'tool_use', id: 'tool-1', name: 'shell', input: { command: 'pwd' } },
+      { type: 'tool_result', toolUseId: 'tool-1', content: '/workspace', isError: false },
+    ]);
   });
 });

@@ -1,7 +1,14 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { AgentMode, Message, Conversation, TurnTrace } from '@/types';
+import type {
+  AgentMode,
+  ContentBlock,
+  Conversation,
+  Message,
+  TurnTrace,
+} from '@/types';
 import { messages as appMessages } from '@/i18n';
+import { getMessageToolTraces } from '@/utils/traceUtils';
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2);
@@ -53,7 +60,97 @@ interface ChatState {
   setTraceDocked: (isDocked: boolean) => void;
 }
 
-function normalizePersistedConversations(conversations: Conversation[]): Conversation[] {
+const upsertTrailingTextBlock = (
+  contentBlocks: ContentBlock[] | undefined,
+  text: string,
+): ContentBlock[] => {
+  const next = [...(contentBlocks ?? [])];
+  const lastBlock = next[next.length - 1];
+
+  if (lastBlock?.type === 'text') {
+    next[next.length - 1] = { ...lastBlock, text };
+    return next;
+  }
+
+  next.push({ type: 'text', text });
+  return next;
+};
+
+const upsertTrailingThinkingBlock = (
+  contentBlocks: ContentBlock[] | undefined,
+  thinking: string,
+): ContentBlock[] => {
+  const next = [...(contentBlocks ?? [])];
+  const lastBlock = next[next.length - 1];
+
+  if (lastBlock?.type === 'thinking') {
+    next[next.length - 1] = { ...lastBlock, thinking };
+    return next;
+  }
+
+  next.push({ type: 'thinking', thinking });
+  return next;
+};
+
+const needsContentBlockMigration = (message: Message) => {
+  const contentBlocks = message.contentBlocks ?? [];
+  const hasOnlyTextBlocks =
+    contentBlocks.length === 0 || contentBlocks.every((block) => block.type === 'text');
+
+  return hasOnlyTextBlocks && Boolean(message.thinkingContent || getMessageToolTraces(message).length);
+};
+
+const migrateMessageContentBlocks = (message: Message): Message => {
+  if (!needsContentBlockMigration(message)) {
+    return message;
+  }
+
+  const contentBlocks: ContentBlock[] = [];
+
+  if (message.thinkingContent) {
+    contentBlocks.push({
+      type: 'thinking',
+      thinking: message.thinkingContent,
+    });
+  }
+
+  for (const toolTrace of getMessageToolTraces(message)) {
+    contentBlocks.push({
+      type: 'tool_use',
+      id: toolTrace.toolCallId,
+      name: toolTrace.name,
+      input: toolTrace.input,
+    });
+
+    if (toolTrace.status === 'completed' || toolTrace.status === 'failed') {
+      contentBlocks.push({
+        type: 'tool_result',
+        toolUseId: toolTrace.toolCallId,
+        content:
+          toolTrace.status === 'failed'
+            ? toolTrace.error ?? toolTrace.output ?? ''
+            : toolTrace.output ?? '',
+        isError: toolTrace.status === 'failed',
+      });
+    }
+  }
+
+  if (message.content) {
+    contentBlocks.push({
+      type: 'text',
+      text: message.content,
+    });
+  }
+
+  return {
+    ...message,
+    contentBlocks,
+  };
+};
+
+export function normalizePersistedConversations(
+  conversations: Conversation[],
+): Conversation[] {
   return conversations.map((conversation) => ({
     ...conversation,
     traceEnabled: conversation.traceEnabled ?? false,
@@ -61,15 +158,18 @@ function normalizePersistedConversations(conversations: Conversation[]): Convers
       ...turn,
       tools: turn.tools ?? [],
     })),
-    messages: conversation.messages.map((message) =>
-      message.status === 'streaming' || message.status === 'pending'
-        ? {
-            ...message,
-            status: 'error',
-            content: message.content || appMessages.messages.interrupted,
-          }
-        : message,
-    ),
+    messages: conversation.messages.map((message) => {
+      const normalizedMessage =
+        message.status === 'streaming' || message.status === 'pending'
+          ? {
+              ...message,
+              status: 'error' as const,
+              content: message.content || appMessages.messages.interrupted,
+            }
+          : message;
+
+      return migrateMessageContentBlocks(normalizedMessage);
+    }),
   }));
 }
 
@@ -258,14 +358,10 @@ export const useChatStore = create<ChatState>()(
                     messages: c.messages.map((m) => {
                       if (m.id !== messageId) return m;
                       const content = m.content + delta;
-                      const contentBlocks =
-                        m.contentBlocks && m.contentBlocks.length > 0
-                          ? m.contentBlocks.map((block, index) =>
-                              index === 0 && block.type === 'text'
-                                ? { ...block, text: content }
-                                : block,
-                            )
-                          : [{ type: 'text' as const, text: content }];
+                      const contentBlocks = upsertTrailingTextBlock(
+                        m.contentBlocks,
+                        content,
+                      );
 
                       return { ...m, content, contentBlocks };
                     }),
@@ -284,10 +380,16 @@ export const useChatStore = create<ChatState>()(
                   messages: c.messages.map((m) => {
                     if (m.id !== messageId) return m;
 
+                    const thinkingContent = `${m.thinkingContent ?? ''}${delta}`;
+
                     return {
                       ...m,
-                      thinkingContent: `${m.thinkingContent ?? ''}${delta}`,
+                      thinkingContent,
                       thinkingStartedAt: m.thinkingStartedAt ?? Date.now(),
+                      contentBlocks: upsertTrailingThinkingBlock(
+                        m.contentBlocks,
+                        thinkingContent,
+                      ),
                     };
                   }),
                   updatedAt: Date.now(),

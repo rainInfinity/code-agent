@@ -55,7 +55,8 @@
       "Bash(Get-ChildItem -Path \"openspec/changes/2026-05-05-tool-registry-enhance\" -Recurse)",
       "Bash([ -d \"openspec/specs/$cap\" ])",
       "Bash(openspec --help)",
-      "Bash(openspec archive *)"
+      "Bash(openspec archive *)",
+      "Bash(Get-ChildItem -Path \"F:\\\\project\\\\code-agent\\\\openspec\\\\changes\\\\fix-message-content-block-order\" -Recurse)"
     ],
     "additionalDirectories": [
       "F:\\project\\code-agent\\openspec\\changes\\multi-provider-api-config\\specs",
