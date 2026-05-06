@@ -28,8 +28,8 @@
 ## 6. 验证
 
 - [x] 6.1 验证 `ContentBlock::Thinking` 序列化为 `{"type": "thinking", "thinking": "..."}` 格式
-- [ ] 6.2 使用 DeepSeek Reasoner 模型进行多轮 agent 对话，确认不再出现 400 错误
+- [x] 6.2 使用 DeepSeek Reasoner 模型进行多轮 agent 对话，确认不再出现 400 错误
 - [x] 6.3 验证 thinking 内容正确出现在 `trace-prompt` 事件的 messages 中
 - [x] 6.4 验证无 thinking 模式（deepseek-chat / claude 模型）下 `thinking_content` 为空字符串，不影响正常流程
 - [x] 6.5 运行现有单元测试（66 passed），确保新增字段不破坏已有测试
-- [ ] 6.6 多工具并行场景下验证 tool_result 合并到单条 user 消息，API 不再报 tool_use/tool_result 不匹配
+- [x] 6.6 多工具并行场景下验证 tool_result 合并到单条 user 消息，API 不再报 tool_use/tool_result 不匹配

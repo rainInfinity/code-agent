@@ -51,7 +51,11 @@
       "Bash(Select-Object -ExpandProperty Name)",
       "PowerShell(npx openspec list --json 2>$null)",
       "PowerShell(New-Item -ItemType Directory -Path \"openspec/changes/2026-05-05-fix-thinking-content-preservation\" -Force)",
-      "Bash(cargo test *)"
+      "Bash(cargo test *)",
+      "Bash(Get-ChildItem -Path \"openspec/changes/2026-05-05-tool-registry-enhance\" -Recurse)",
+      "Bash([ -d \"openspec/specs/$cap\" ])",
+      "Bash(openspec --help)",
+      "Bash(openspec archive *)"
     ],
     "additionalDirectories": [
       "F:\\project\\code-agent\\openspec\\changes\\multi-provider-api-config\\specs",
