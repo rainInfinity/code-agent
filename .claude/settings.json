@@ -59,7 +59,17 @@
       "Bash(Get-ChildItem -Path \"F:\\\\project\\\\code-agent\\\\openspec\\\\changes\\\\fix-message-content-block-order\" -Recurse)",
       "Bash(npm install *)",
       "Bash(npm test *)",
-      "Bash(Move-Item \"f:\\\\project\\\\code-agent\\\\src\\\\components\\\\Chat\\\\FoldDivider.tsx\" \"f:\\\\project\\\\code-agent\\\\src\\\\components\\\\common\\\\FoldDivider.tsx\")"
+      "Bash(Move-Item \"f:\\\\project\\\\code-agent\\\\src\\\\components\\\\Chat\\\\FoldDivider.tsx\" \"f:\\\\project\\\\code-agent\\\\src\\\\components\\\\common\\\\FoldDivider.tsx\")",
+      "PowerShell(New-Item -ItemType Directory -Force -Path \"openspec/changes/archive\")",
+      "PowerShell(Move-Item -Path \"openspec/changes/turn-first-main-window-transcript\" -Destination \"openspec/changes/archive/2026-05-06-turn-first-main-window-transcript\")",
+      "PowerShell(if \\($?\\) { \"OK\" } else { \"FAIL\" })",
+      "Bash(New-Item -ItemType Directory -Force -Path openspec/specs/component-extraction, openspec/specs/type-domain-split, openspec/specs/cva-style-variants, openspec/specs/store-responsibility-split, openspec/specs/style-mixins, openspec/specs/content-block-unified-rendering)",
+      "Bash(Out-Null)",
+      "Bash(\"OK\")",
+      "PowerShell(Move-Item -Path \"openspec/changes/refactor-frontend-components\" -Destination \"openspec/changes/archive/2026-05-06-refactor-frontend-components\")",
+      "PowerShell(Move-Item -Path \"openspec/changes/fix-scroll-interrupt-and-tool-result-adjacency\" -Destination \"openspec/changes/archive/2026-05-06-fix-scroll-interrupt-and-tool-result-adjacency\")",
+      "PowerShell(Move-Item -Path \"openspec/changes/fix-message-content-block-order\" -Destination \"openspec/changes/archive/2026-05-06-fix-message-content-block-order\")",
+      "PowerShell(\"OK\")"
     ],
     "additionalDirectories": [
       "F:\\project\\code-agent\\openspec\\changes\\multi-provider-api-config\\specs",

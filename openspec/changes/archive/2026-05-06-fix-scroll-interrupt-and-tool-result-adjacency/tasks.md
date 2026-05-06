@@ -14,4 +14,4 @@
 
 - [x] 3.1 运行与滚动、消息渲染、turn transcript 相关的前端测试
 - [x] 3.2 运行与 prompt/provider 相关的 Rust 测试
-- [ ] 3.3 手动验证失败 Tool 调用后不会再出现 `tool_use ids were found without tool_result blocks immediately after` 的 400 错误
+- [x] 3.3 手动验证失败 Tool 调用后不会再出现 `tool_use ids were found without tool_result blocks immediately after` 的 400 错误

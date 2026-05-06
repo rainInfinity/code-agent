@@ -52,7 +52,7 @@
 
 ### Requirement: Assistant messages shall display compact tool execution process blocks
 
-当 assistant 消息触发工具调用时，主窗口聊天区 SHALL 在消息体中渲染紧凑的工具过程块，以展示工具名、当前状态和结果摘要。该视图 SHALL 借鉴 Claude Code 风格，但保持适合主窗口聊天流的紧凑密度。
+当 assistant 消息触发工具调用时，主窗口聊天区 SHALL 在消息体中渲染紧凑的工具过程块，以展示工具名、当前状态和结果摘要。工具过程块 SHALL 在时间线上位于文本回复之前（因为工具执行发生在最终文本生成之前）。该视图 SHALL 借鉴 Claude Code 风格，但保持适合主窗口聊天流的紧凑密度。渲染顺序 SHALL 基于 `message.contentBlocks` 的插入时间顺序，而非组件硬编码。
 
 #### Scenario: Tool is requested and starts running
 
@@ -79,8 +79,16 @@
 
 - **GIVEN** 同一个 assistant 消息包含多个工具调用
 - **WHEN** 聊天区渲染该消息
-- **THEN** 所有工具过程块 SHALL 按逻辑顺序显示
+- **THEN** 所有工具过程块 SHALL 按事件到达时间顺序显示
+- **AND** 工具过程块 SHALL 渲染在最终文本回复之前
 - **AND** 最终回复正文 SHALL 与这些过程块共存，而不是被覆盖或拆成空白消息
+
+#### Scenario: Tool calls appear before text response in chronological order
+
+- **GIVEN** Agent 先调用工具然后再生成文本回复
+- **WHEN** 聊天区渲染该消息
+- **THEN** 工具调用块 SHALL 在视觉上位于文本回复块的上方
+- **AND** 这与 Agent 实际执行顺序（Think → Act → Observe → Respond）一致
 
 ### Requirement: MessageList supports one-time automatic fold initialization
 
@@ -119,3 +127,39 @@ MessageList SHALL preserve its current visible history while new streaming conte
 - **THEN** the folded region SHALL remain stable
 - **AND** the latest message SHALL remain visible
 - **AND** existing auto-follow and scroll-to-bottom behavior SHALL continue to work
+
+### Requirement: Assistant message body shall render turn sections in canonical order
+
+当一条 assistant 回复包含多个 turns 时，主窗口 SHALL 在同一个 assistant message body 中按 canonical turn 顺序渲染多个 turn sections。每个 turn section SHALL 作为独立的可视语义单元包含 thinking、tools 和 response。
+
+#### Scenario: Render a multi-turn assistant reply
+
+- **GIVEN** 一条 assistant 回复关联了两个 turns
+- **WHEN** 主窗口渲染该回复
+- **THEN** 主窗口 SHALL 先渲染第一个 turn section，再渲染第二个 turn section
+- **AND** 每个 turn section 的 thinking、tools 和 response SHALL 保持本 turn 内部顺序
+
+#### Scenario: Render a tool-only turn followed by a text turn
+
+- **GIVEN** 第一个 turn 只包含 thinking 和 tool execution，第二个 turn 生成最终文本
+- **WHEN** 主窗口渲染该回复
+- **THEN** 第一个 turn section SHALL 不伪造最终文本块
+- **AND** 最终文本 SHALL 只出现在后续文本 turn section 中
+
+### Requirement: Main-window thinking panels shall be scoped per turn section
+
+主窗口中的每个 thinking panel SHALL 绑定到单独的 turn section。不同 thinking panel 的内容、进行中/完成状态、时长和光标显示 SHALL 相互独立。
+
+#### Scenario: Earlier thinking panel stays complete while later turn is streaming
+
+- **GIVEN** 一条 assistant 回复中第一个 turn 已完成，第二个 turn 正在 thinking
+- **WHEN** 主窗口渲染两个 thinking panels
+- **THEN** 第一个 panel SHALL 显示 completed 状态
+- **AND** 第二个 panel SHALL 显示 streaming 状态
+
+#### Scenario: Thinking duration is independent per turn
+
+- **GIVEN** 两个 turns 的 thinking 开始时间不同
+- **WHEN** 主窗口显示它们的 thinking duration
+- **THEN** 每个 panel SHALL 使用所属 turn 的开始/结束时间计算时长
+- **AND** SHALL NOT 共享同一个 message 级计时器

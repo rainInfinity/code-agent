@@ -32,6 +32,6 @@
 ## 6. Verification
 
 - [x] 6.1 Run the frontend test suite with `npm test`
-- [ ] 6.2 Manual test: start the Agent, trigger a tool call, and verify the main window renders `Thinking -> Tools -> Text`
-- [ ] 6.3 Manual test: load a legacy persisted conversation and verify migrated render order
+- [x] 6.2 Manual test: start the Agent, trigger a tool call, and verify the main window renders `Thinking -> Tools -> Text`
+- [x] 6.3 Manual test: load a legacy persisted conversation and verify migrated render order
 - [x] 6.4 Verify the Trace panel remains unaffected
