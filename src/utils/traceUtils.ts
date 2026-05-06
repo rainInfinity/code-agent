@@ -22,6 +22,7 @@ export const createTurnTrace = (
   turnNumber: event.turnCount,
   sessionId: event.sessionId,
   conversationId: event.conversationId,
+  assistantMessageId: event.assistantMessageId,
   startTime: startedAt,
   status: 'running',
   thinking: {

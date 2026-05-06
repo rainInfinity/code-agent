@@ -16,7 +16,11 @@ import {
   onTraceThinkingStart,
 } from '@/hooks/useIpc';
 import { useTraceStore } from '@/stores/traceStore';
-import { CHAT_HISTORY_STORAGE_KEY, useChatStore } from '@/stores/chatStore';
+import {
+  CHAT_HISTORY_STORAGE_KEY,
+  normalizePersistedConversations,
+  useChatStore,
+} from '@/stores/chatStore';
 import type {
   AgentTurnCompleteEvent,
   AgentTurnEvent,
@@ -160,11 +164,12 @@ const recordTraceTurnComplete = (event: AgentTurnCompleteEvent) => {
 };
 
 const mergeSyncedConversations = (incoming: Conversation[]) => {
+  const normalizedIncoming = normalizePersistedConversations(incoming);
   const existingById = new Map(
     useChatStore.getState().conversations.map((conversation) => [conversation.id, conversation]),
   );
 
-  return incoming.map((conversation) => {
+  return normalizedIncoming.map((conversation) => {
     const existing = existingById.get(conversation.id);
     const incomingTurns = conversation.turns ?? [];
     const existingTurns = existing?.turns ?? [];

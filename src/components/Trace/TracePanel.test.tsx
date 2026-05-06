@@ -3,6 +3,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ThemeProvider } from 'styled-components';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { MessageList } from '@/components/Chat/MessageList';
 import { TracePanel } from './TracePanel';
 import { messages as appMessages } from '@/i18n';
 import { darkTheme } from '@/styles/theme';
@@ -59,6 +60,7 @@ const createTurn = (conversationId: string, turnNumber: number): TurnTrace => ({
   turnNumber,
   sessionId: `session-${conversationId}`,
   conversationId,
+  assistantMessageId: `${conversationId}-assistant-${turnNumber}`,
   startTime: Date.now(),
   endTime: Date.now(),
   status: 'complete',
@@ -309,5 +311,76 @@ describe('TracePanel folding', () => {
         name: appMessages.fold.divider.expandAll,
       }),
     ).toBeNull();
+  });
+
+  test('keeps main chat and trace views aligned on the same turn completion state', () => {
+    const assistantMessageId = 'shared-assistant';
+    const conversation: Conversation = {
+      id: 'shared-conversation',
+      title: 'shared-conversation',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      messages: [
+        createMessage('shared-user', 'user', 'Check status'),
+        {
+          id: assistantMessageId,
+          role: 'assistant',
+          content: 'Done.',
+          contentBlocks: [],
+          status: 'complete',
+          timestamp: Date.now(),
+        },
+      ],
+      turns: [
+        {
+          turnNumber: 1,
+          sessionId: 'session-shared-conversation',
+          conversationId: 'shared-conversation',
+          assistantMessageId,
+          startTime: 1_000,
+          endTime: 2_000,
+          status: 'complete',
+          prompt: {
+            systemPrompt: 'system',
+            messages: [{ role: 'user', content: 'Check status' }],
+            tools: [],
+          },
+          thinking: {
+            content: 'reasoning',
+            startTime: 1_000,
+            endTime: 1_500,
+            status: 'complete',
+          },
+          response: {
+            content: 'Done.',
+            startTime: 1_600,
+            endTime: 2_000,
+          },
+          tools: [],
+        },
+      ],
+    };
+
+    useChatStore.setState({
+      conversations: [conversation],
+      activeConversationId: conversation.id,
+    });
+    useTraceStore.setState({
+      conversationId: conversation.id,
+      sessionId: 'session-shared-conversation',
+      agentStatus: 'complete',
+    });
+
+    renderWithTheme(
+      <>
+        <MessageList conversationId={conversation.id} />
+        <TracePanel />
+      </>,
+    );
+
+    expect(screen.getByText(appMessages.messages.thinkingComplete)).toBeTruthy();
+    expect(
+      screen.getAllByText(appMessages.trace.turnStatus.complete).length,
+    ).toBeGreaterThan(0);
   });
 });

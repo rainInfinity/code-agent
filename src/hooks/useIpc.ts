@@ -34,6 +34,7 @@ export interface SendMessagePayload {
   messages: Array<{
     role: string;
     content: string;
+    contentBlocks?: Conversation['messages'][number]['contentBlocks'];
   }>;
 }
 

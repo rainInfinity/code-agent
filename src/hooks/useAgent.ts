@@ -21,8 +21,6 @@ import {
 import type {
   AgentTurnCompleteEvent,
   AgentTurnEvent,
-  ContentBlock,
-  Message,
   StreamEvent,
   StreamThinkingEvent,
   TracePromptEvent,
@@ -36,6 +34,7 @@ import {
   createTurnTrace,
   getTurnTraceStatus,
 } from '@/utils/traceUtils';
+import { buildProviderTranscript } from '@/utils/turns';
 
 type AgentListenerRegistry = {
   installed: boolean;
@@ -52,16 +51,6 @@ type BufferedDelta = {
 };
 
 type DeltaBuffer = Map<string, BufferedDelta>;
-
-const sanitizeMessageContentBlocksForPrompt = (
-  message: Message,
-): ContentBlock[] | undefined => {
-  const contentBlocks = message.contentBlocks?.filter(
-    (block) => !(message.role === 'assistant' && block.type === 'tool_result'),
-  );
-
-  return contentBlocks && contentBlocks.length > 0 ? contentBlocks : undefined;
-};
 
 const getBufferKey = (conversationId: string, messageId: string) =>
   `${conversationId}:${messageId}`;
@@ -485,13 +474,14 @@ export function useAgent() {
       const conversation = useChatStore.getState().conversations.find((item) => item.id === convId);
       if (!conversation) return;
 
-      const messages = conversation.messages
-        .filter((message) => message.role === 'user' || (message.role === 'assistant' && message.status === 'complete'))
-        .map((message) => ({
-          role: message.role,
-          content: message.content,
-          contentBlocks: sanitizeMessageContentBlocksForPrompt(message),
-        }));
+      const messages = buildProviderTranscript(
+        conversation.messages.filter(
+          (message) =>
+            message.role === 'user' ||
+            (message.role === 'assistant' && message.status === 'complete'),
+        ),
+        conversation.turns,
+      );
 
       try {
         const sessionId = await runAgent({

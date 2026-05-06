@@ -81,4 +81,44 @@ describe('normalizePersistedConversations', () => {
 
     expect(conversation.messages[0].contentBlocks).toEqual(contentBlocks);
   });
+
+  test('creates a fallback assistant turn for legacy conversations without turn metadata', () => {
+    const message: Message = {
+      id: 'assistant-legacy',
+      role: 'assistant',
+      content: 'Final answer',
+      contentBlocks: [
+        { type: 'thinking', thinking: 'reasoning' },
+        { type: 'tool_use', id: 'tool-1', name: 'shell', input: { command: 'pwd' } },
+        { type: 'tool_result', toolUseId: 'tool-1', content: '/workspace', isError: false },
+        { type: 'text', text: 'Final answer' },
+      ],
+      status: 'complete',
+      timestamp: 1,
+    };
+
+    const [conversation] = normalizePersistedConversations([
+      createConversation(message),
+    ]);
+
+    expect(conversation.turns).toHaveLength(1);
+    expect(conversation.turns[0]).toMatchObject({
+      assistantMessageId: 'assistant-legacy',
+      thinking: {
+        content: 'reasoning',
+        status: 'complete',
+      },
+      response: {
+        content: 'Final answer',
+      },
+      tools: [
+        {
+          toolCallId: 'tool-1',
+          name: 'shell',
+          status: 'completed',
+          output: '/workspace',
+        },
+      ],
+    });
+  });
 });

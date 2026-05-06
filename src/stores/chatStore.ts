@@ -9,6 +9,7 @@ import type {
 } from '@/types';
 import { messages as appMessages } from '@/i18n';
 import { getMessageToolTraces } from '@/utils/traceUtils';
+import { normalizeConversationTurns } from '@/utils/turns';
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2);
@@ -151,14 +152,8 @@ const migrateMessageContentBlocks = (message: Message): Message => {
 export function normalizePersistedConversations(
   conversations: Conversation[],
 ): Conversation[] {
-  return conversations.map((conversation) => ({
-    ...conversation,
-    traceEnabled: conversation.traceEnabled ?? false,
-    turns: (conversation.turns ?? []).map((turn) => ({
-      ...turn,
-      tools: turn.tools ?? [],
-    })),
-    messages: conversation.messages.map((message) => {
+  return conversations.map((conversation) => {
+    const messages = conversation.messages.map((message) => {
       const normalizedMessage =
         message.status === 'streaming' || message.status === 'pending'
           ? {
@@ -169,8 +164,15 @@ export function normalizePersistedConversations(
           : message;
 
       return migrateMessageContentBlocks(normalizedMessage);
-    }),
-  }));
+    });
+
+    return {
+      ...conversation,
+      traceEnabled: conversation.traceEnabled ?? false,
+      messages,
+      turns: normalizeConversationTurns(conversation.id, messages, conversation.turns),
+    };
+  });
 }
 
 export const useChatStore = create<ChatState>()(

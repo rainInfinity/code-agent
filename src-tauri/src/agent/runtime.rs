@@ -74,6 +74,7 @@ pub async fn agent_loop(session: &mut AgentSession) -> Result<AgentStatus, Strin
             conversation_id: session.conversation_id.clone(),
             session_id: session.id.clone(),
             turn_count: session.turn_count,
+            assistant_message_id: session.assistant_message_id.clone(),
         });
 
         let tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));

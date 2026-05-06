@@ -232,10 +232,13 @@ export interface TraceThinkingEvent {
   turn: number;
 }
 
+export type TurnThinkingStatus = 'idle' | 'streaming' | 'complete';
+
 export interface TurnTrace {
   turnNumber: number;
   sessionId: string;
   conversationId: string;
+  assistantMessageId: string;
   startTime: number;
   endTime?: number;
   status: TurnTraceStatus;
@@ -248,7 +251,7 @@ export interface TurnTrace {
     content: string;
     startTime?: number;
     endTime?: number;
-    status: 'idle' | 'streaming' | 'complete';
+    status: TurnThinkingStatus;
   };
   response: {
     content: string;
@@ -292,6 +295,7 @@ export interface AgentTurnEvent {
   conversationId: string;
   sessionId: string;
   turnCount: number;
+  assistantMessageId: string;
 }
 
 export interface AgentCompleteEvent {

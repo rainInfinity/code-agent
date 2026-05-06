@@ -32,6 +32,7 @@ const createTurnTrace = (conversationId: string, turnNumber: number): TurnTrace 
   turnNumber,
   sessionId: `session-${conversationId}`,
   conversationId,
+  assistantMessageId: `${conversationId}-assistant-${turnNumber}`,
   startTime: Date.now(),
   endTime: Date.now(),
   status: 'complete',
@@ -238,6 +239,165 @@ describe('MessageList folding', () => {
     expect(screen.getByText('shell')).toBeTruthy();
     expect(screen.getByText('Partial answer before the failure.')).toBeTruthy();
     expect(screen.getByText('API error (400 Bad Request)')).toBeTruthy();
+  });
+
+  test('renders independent thinking states for multiple turns in one assistant reply', () => {
+    const assistantMessageId = 'assistant-multi-turn';
+    const conversation: Conversation = {
+      id: 'turn-status',
+      title: 'turn-status',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      turns: [
+        {
+          turnNumber: 1,
+          sessionId: 'session-turn-status',
+          conversationId: 'turn-status',
+          assistantMessageId,
+          startTime: 1_000,
+          endTime: 2_000,
+          status: 'complete',
+          thinking: {
+            content: 'first reasoning',
+            startTime: 1_000,
+            endTime: 1_500,
+            status: 'complete',
+          },
+          response: {
+            content: '',
+            startTime: 1_500,
+            endTime: 2_000,
+          },
+          tools: [],
+        },
+        {
+          turnNumber: 2,
+          sessionId: 'session-turn-status',
+          conversationId: 'turn-status',
+          assistantMessageId,
+          startTime: 3_000,
+          status: 'running',
+          thinking: {
+            content: 'second reasoning',
+            startTime: 3_000,
+            status: 'streaming',
+          },
+          response: {
+            content: '',
+          },
+          tools: [],
+        },
+      ],
+      messages: [
+        createMessage('turn-status-user', 'user', 'Think in steps'),
+        {
+          id: assistantMessageId,
+          role: 'assistant',
+          content: '',
+          contentBlocks: [],
+          status: 'streaming',
+          timestamp: Date.now(),
+        },
+      ],
+    };
+
+    useChatStore.setState({
+      conversations: [conversation],
+      activeConversationId: conversation.id,
+    });
+
+    renderWithTheme(<MessageList conversationId={conversation.id} />);
+
+    expect(screen.getByText(appMessages.messages.thinkingComplete)).toBeTruthy();
+    expect(screen.getByText(appMessages.messages.thinkingInProgress)).toBeTruthy();
+  });
+
+  test('renders canonical turn order for a tool-only turn followed by a text turn', () => {
+    const assistantMessageId = 'assistant-turn-order';
+    const conversation: Conversation = {
+      id: 'turn-order',
+      title: 'turn-order',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      turns: [
+        {
+          turnNumber: 1,
+          sessionId: 'session-turn-order',
+          conversationId: 'turn-order',
+          assistantMessageId,
+          startTime: 1_000,
+          endTime: 2_000,
+          status: 'complete',
+          thinking: {
+            content: 'Checking workspace',
+            startTime: 1_000,
+            endTime: 1_100,
+            status: 'complete',
+          },
+          response: {
+            content: '',
+            startTime: 1_200,
+            endTime: 2_000,
+          },
+          tools: [
+            {
+              toolCallId: 'tool-1',
+              name: 'shell',
+              input: { command: 'pwd' },
+              logicalIndex: 1,
+              status: 'completed',
+              output: '/workspace',
+            },
+          ],
+        },
+        {
+          turnNumber: 2,
+          sessionId: 'session-turn-order',
+          conversationId: 'turn-order',
+          assistantMessageId,
+          startTime: 2_100,
+          endTime: 2_500,
+          status: 'complete',
+          thinking: {
+            content: 'Preparing answer',
+            startTime: 2_100,
+            endTime: 2_200,
+            status: 'complete',
+          },
+          response: {
+            content: 'I found the workspace.',
+            startTime: 2_300,
+            endTime: 2_500,
+          },
+          tools: [],
+        },
+      ],
+      messages: [
+        createMessage('turn-order-user', 'user', 'Run a tool'),
+        {
+          id: assistantMessageId,
+          role: 'assistant',
+          content: 'I found the workspace.',
+          contentBlocks: [],
+          status: 'complete',
+          timestamp: Date.now(),
+        },
+      ],
+    };
+
+    useChatStore.setState({
+      conversations: [conversation],
+      activeConversationId: conversation.id,
+    });
+
+    renderWithTheme(<MessageList conversationId={conversation.id} />);
+
+    const toolLabel = screen.getByText('shell');
+    const responseText = screen.getByText('I found the workspace.');
+
+    expect(
+      toolLabel.compareDocumentPosition(responseText) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   test('does not show fold controls for short conversations', () => {

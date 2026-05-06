@@ -409,6 +409,7 @@ pub struct AgentTurnEvent {
     pub conversation_id: String,
     pub session_id: String,
     pub turn_count: usize,
+    pub assistant_message_id: String,
 }
 
 #[derive(Debug, Clone, Serialize)]

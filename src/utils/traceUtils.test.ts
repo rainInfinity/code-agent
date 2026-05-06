@@ -25,12 +25,22 @@ const createToolTraceEvent = (
 describe('traceUtils', () => {
   test('closes earlier turns before later turns become active', () => {
     const turn1 = createTurnTrace(
-      { conversationId: 'conversation-1', sessionId: 'session-1', turnCount: 1 },
+      {
+        conversationId: 'conversation-1',
+        sessionId: 'session-1',
+        turnCount: 1,
+        assistantMessageId: 'assistant-1',
+      },
       1_000,
     );
     const closedTurn1 = completeTurnTrace(turn1, 'complete', 12, 24, 1_500);
     const turn2 = createTurnTrace(
-      { conversationId: 'conversation-1', sessionId: 'session-1', turnCount: 2 },
+      {
+        conversationId: 'conversation-1',
+        sessionId: 'session-1',
+        turnCount: 2,
+        assistantMessageId: 'assistant-1',
+      },
       1_600,
     );
 

@@ -21,8 +21,9 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { ToolTraceBlocks } from './ToolTraceBlocks';
 import { useMessageFold } from '@/hooks/useMessageFold';
 import { messages as appMessages } from '@/i18n';
-import type { ContentBlock, Message, MessageRole, ToolTrace } from '@/types';
+import type { ContentBlock, Message, MessageRole, ToolTrace, TurnTrace } from '@/types';
 import { getMessageToolTraces } from '@/utils/traceUtils';
+import { getTurnsForAssistantMessage } from '@/utils/turns';
 
 const AUTO_FOLLOW_BOTTOM_THRESHOLD_PX = 150;
 const BUTTON_SMOOTH_SCROLL_MS = 700;
@@ -67,10 +68,33 @@ const getStreamingScrollSignature = (
       ].join(':'),
     )
     .join('|');
+  const turnSignature = (conversation?.turns ?? [])
+    .filter((turn) => turn.assistantMessageId === streamingMessage.id)
+    .map((turn) =>
+      [
+        turn.turnNumber,
+        turn.status,
+        turn.thinking.status,
+        turn.thinking.content.length,
+        turn.response.content.length,
+        turn.tools
+          .map((toolTrace) =>
+            [
+              toolTrace.toolCallId,
+              toolTrace.status,
+              toolTrace.output?.length ?? 0,
+              toolTrace.error?.length ?? 0,
+            ].join(':'),
+          )
+          .join('~'),
+      ].join(':'),
+    )
+    .join('|');
 
   return [
     streamingMessage.id,
     streamingMessage.content.length,
+    turnSignature,
     streamingMessage.thinkingContent?.length ?? 0,
     toolTraceSignature,
     streamingMessage.toolCalls?.length ?? 0,
@@ -142,6 +166,14 @@ const RoleName = styled.div`
 const MessageBody = styled.div`
   min-width: 0;
   min-height: 28px;
+`;
+
+const TurnSectionShell = styled.div`
+  & + & {
+    margin-top: ${({ theme }) => theme.spacing.md};
+    padding-top: ${({ theme }) => theme.spacing.md};
+    border-top: 1px solid ${({ theme }) => theme.colors.border};
+  }
 `;
 
 const UserMessageText = styled.pre`
@@ -425,17 +457,31 @@ const formatThinkingDuration = (durationMs: number) => {
   );
 };
 
-const ThinkingPanel: React.FC<{ message: Message; thinkingContent?: string }> = ({
-  message,
-  thinkingContent: thinkingContentProp,
+type ThinkingPanelProps = {
+  panelId: string;
+  thinkingContent: string;
+  thinkingStatus: TurnTrace['thinking']['status'];
+  thinkingStartedAt?: number;
+  thinkingEndedAt?: number;
+  responseStartedAt?: number;
+};
+
+const ThinkingPanel: React.FC<ThinkingPanelProps> = ({
+  panelId,
+  thinkingContent,
+  thinkingStatus,
+  thinkingStartedAt,
+  thinkingEndedAt,
+  responseStartedAt,
 }) => {
   const bodyRef = useRef<HTMLPreElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(() =>
-    message.thinkingStartedAt ? Date.now() - message.thinkingStartedAt : 0,
+    thinkingStartedAt
+      ? (thinkingEndedAt ?? Date.now()) - thinkingStartedAt
+      : 0,
   );
-  const thinkingContent = thinkingContentProp ?? message.thinkingContent ?? '';
-  const isThinking = message.status === 'streaming' && !message.content;
+  const isThinking = thinkingStatus === 'streaming';
   const tokenEstimate = thinkingContent
     ? Math.round(thinkingContent.length * 0.25)
     : null;
@@ -448,13 +494,13 @@ const ThinkingPanel: React.FC<{ message: Message; thinkingContent?: string }> = 
   }, [isOpen, thinkingContent]);
 
   useEffect(() => {
-    if (!message.thinkingStartedAt) {
+    if (!thinkingStartedAt) {
       setElapsedMs(0);
       return;
     }
 
     const updateElapsed = () => {
-      setElapsedMs(Date.now() - message.thinkingStartedAt!);
+      setElapsedMs((thinkingEndedAt ?? Date.now()) - thinkingStartedAt);
     };
 
     updateElapsed();
@@ -462,7 +508,13 @@ const ThinkingPanel: React.FC<{ message: Message; thinkingContent?: string }> = 
 
     const timer = window.setInterval(updateElapsed, 100);
     return () => window.clearInterval(timer);
-  }, [isThinking, message.id, message.thinkingStartedAt]);
+  }, [isThinking, panelId, thinkingEndedAt, thinkingStartedAt]);
+
+  useEffect(() => {
+    if (responseStartedAt) {
+      setIsOpen(false);
+    }
+  }, [responseStartedAt]);
 
   return (
     <ThinkingPanelShell $isThinking={isThinking}>
@@ -484,7 +536,7 @@ const ThinkingPanel: React.FC<{ message: Message; thinkingContent?: string }> = 
             : appMessages.messages.thinkingComplete}
         </ThinkingHeaderText>
         <ThinkingMeta>
-          {message.thinkingStartedAt ? (
+          {thinkingStartedAt ? (
             <span>{formatThinkingDuration(elapsedMs)}</span>
           ) : null}
           {tokenEstimate !== null ? (
@@ -567,9 +619,36 @@ const buildFallbackToolTrace = (
   status: 'requested',
 });
 
-const MessageBodyContent: React.FC<{ message: Message; role: MessageRole }> = ({
+const TurnSection: React.FC<{
+  turn: TurnTrace;
+  isStreaming: boolean;
+}> = ({ turn, isStreaming }) => (
+  <TurnSectionShell>
+    {turn.thinking.content || turn.thinking.status !== 'idle' ? (
+      <ThinkingPanel
+        panelId={`${turn.assistantMessageId}:${turn.turnNumber}`}
+        thinkingContent={turn.thinking.content}
+        thinkingStatus={turn.thinking.status}
+        thinkingStartedAt={turn.thinking.startTime}
+        thinkingEndedAt={turn.thinking.endTime}
+        responseStartedAt={turn.response.startTime}
+      />
+    ) : null}
+    {turn.tools.length > 0 ? <ToolTraceBlocks toolTraces={turn.tools} /> : null}
+    {turn.response.content ? (
+      <MarkdownRenderer content={turn.response.content} isStreaming={isStreaming} />
+    ) : null}
+  </TurnSectionShell>
+);
+
+const MessageBodyContent: React.FC<{
+  message: Message;
+  role: MessageRole;
+  assistantTurns: TurnTrace[];
+}> = ({
   message,
   role,
+  assistantTurns,
 }) => {
   const { status, content } = message;
   const contentBlocks = message.contentBlocks ?? [];
@@ -578,7 +657,44 @@ const MessageBodyContent: React.FC<{ message: Message; role: MessageRole }> = ({
     toolTraces.map((toolTrace) => [toolTrace.toolCallId, toolTrace]),
   );
   const hasRenderableBlocks = contentBlocks.length > 0;
+  const hasTurnProjection = role === 'assistant' && assistantTurns.length > 0;
+  const hasTurnRenderableContent = assistantTurns.some(
+    (turn) =>
+      turn.thinking.content ||
+      turn.thinking.status !== 'idle' ||
+      turn.tools.length > 0 ||
+      turn.response.content,
+  );
   const showErrorMessage = status === 'error' && Boolean(content || !hasRenderableBlocks);
+
+  if (hasTurnProjection) {
+    if (status === 'streaming' && !hasTurnRenderableContent) {
+      return (
+        <ThinkingIndicator>
+          <span>{appMessages.messages.thinkingInProgress}</span>
+        </ThinkingIndicator>
+      );
+    }
+
+    return (
+      <>
+        {assistantTurns.map((turn, index) => (
+          <TurnSection
+            key={`${turn.sessionId}:${turn.turnNumber}`}
+            turn={turn}
+            isStreaming={
+              status === 'streaming' &&
+              index === assistantTurns.length - 1 &&
+              turn.status === 'running'
+            }
+          />
+        ))}
+        {status === 'error' && content ? (
+          <ErrorMessage>{content || appMessages.messages.errorFallback}</ErrorMessage>
+        ) : null}
+      </>
+    );
+  }
 
   if (status === 'streaming' && !hasRenderableBlocks) {
     return (
@@ -596,8 +712,10 @@ const MessageBodyContent: React.FC<{ message: Message; role: MessageRole }> = ({
             return (
               <ThinkingPanel
                 key={`thinking-${index}`}
-                message={message}
                 thinkingContent={block.thinking}
+                thinkingStatus={message.status === 'streaming' && !message.content ? 'streaming' : 'complete'}
+                thinkingStartedAt={message.thinkingStartedAt}
+                panelId={`${message.id}:${index}`}
               />
             );
           case 'text':
@@ -648,11 +766,14 @@ type MessageItemProps = {
 
 const MessageItem: React.FC<MessageItemProps> = React.memo(
   ({ conversationId, messageId, role, copyTone, onCopyMessage }) => {
-    const message = useChatStore((state) =>
-      state.conversations
-        .find((conversation) => conversation.id === conversationId)
-        ?.messages.find((item) => item.id === messageId),
+    const conversation = useChatStore((state) =>
+      state.conversations.find((item) => item.id === conversationId),
     );
+    const message = conversation?.messages.find((item) => item.id === messageId);
+    const assistantTurns =
+      message?.role === 'assistant'
+        ? getTurnsForAssistantMessage(conversation?.turns, message.id)
+        : [];
 
     if (!message) return null;
 
@@ -675,7 +796,11 @@ const MessageItem: React.FC<MessageItemProps> = React.memo(
               : appMessages.messages.roles.assistant}
           </RoleName>
           <MessageBody>
-            <MessageBodyContent message={message} role={role} />
+            <MessageBodyContent
+              message={message}
+              role={role}
+              assistantTurns={assistantTurns}
+            />
           </MessageBody>
           <MessageActions $role={role}>
             <CopyButton
