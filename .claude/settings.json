@@ -69,7 +69,10 @@
       "PowerShell(Move-Item -Path \"openspec/changes/refactor-frontend-components\" -Destination \"openspec/changes/archive/2026-05-06-refactor-frontend-components\")",
       "PowerShell(Move-Item -Path \"openspec/changes/fix-scroll-interrupt-and-tool-result-adjacency\" -Destination \"openspec/changes/archive/2026-05-06-fix-scroll-interrupt-and-tool-result-adjacency\")",
       "PowerShell(Move-Item -Path \"openspec/changes/fix-message-content-block-order\" -Destination \"openspec/changes/archive/2026-05-06-fix-message-content-block-order\")",
-      "PowerShell(\"OK\")"
+      "PowerShell(\"OK\")",
+      "Bash(Get-ChildItem -Recurse -Path \"f:\\\\project\\\\code-agent\\\\src-tauri\\\\src\" -Name)",
+      "Bash(Sort-Object)",
+      "PowerShell(Get-ChildItem 'f:\\\\project\\\\code-agent\\\\openspec\\\\changes' -Directory | Where-Object { $_.Name -ne 'archive' } | Select-Object -ExpandProperty Name)"
     ],
     "additionalDirectories": [
       "F:\\project\\code-agent\\openspec\\changes\\multi-provider-api-config\\specs",
