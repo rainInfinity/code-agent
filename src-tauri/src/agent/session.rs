@@ -1,4 +1,5 @@
 use crate::agent::config::AgentConfig;
+use crate::events::event_names;
 use crate::llm::LlmClient;
 use crate::models::{
     AgentCompleteEvent, AgentStatus, AgentTurnCompleteEvent, AgentTurnEvent, ChatMessage,
@@ -37,47 +38,47 @@ impl TauriAgentEventEmitter {
 
 impl AgentEventEmitter for TauriAgentEventEmitter {
     fn emit_text_delta(&self, payload: StreamDeltaEvent) {
-        let _ = self.app.emit("stream-delta", payload);
+        let _ = self.app.emit(event_names::STREAM_DELTA, payload);
     }
 
     fn emit_thinking_delta(&self, payload: StreamThinkingEvent) {
-        let _ = self.app.emit("thinking-delta", payload);
+        let _ = self.app.emit(event_names::THINKING_DELTA, payload);
     }
 
     fn emit_tool_call(&self, payload: ToolCallEvent) {
-        let _ = self.app.emit("tool-call", payload);
+        let _ = self.app.emit(event_names::TOOL_CALL, payload);
     }
 
     fn emit_tool_result(&self, payload: ToolResultEvent) {
-        let _ = self.app.emit("tool-result", payload);
+        let _ = self.app.emit(event_names::TOOL_RESULT, payload);
     }
 
     fn emit_tool_trace(&self, payload: ToolTraceEvent) {
-        let _ = self.app.emit("tool-trace", payload);
+        let _ = self.app.emit(event_names::TOOL_TRACE, payload);
     }
 
     fn emit_turn(&self, payload: AgentTurnEvent) {
-        let _ = self.app.emit("agent-turn", payload);
+        let _ = self.app.emit(event_names::AGENT_TURN, payload);
     }
 
     fn emit_turn_complete(&self, payload: AgentTurnCompleteEvent) {
-        let _ = self.app.emit("agent-turn-complete", payload);
+        let _ = self.app.emit(event_names::AGENT_TURN_COMPLETE, payload);
     }
 
     fn emit_trace_prompt(&self, payload: TracePromptEvent) {
-        let _ = self.app.emit("trace-prompt", payload);
+        let _ = self.app.emit(event_names::TRACE_PROMPT, payload);
     }
 
     fn emit_trace_thinking_start(&self, payload: TraceThinkingEvent) {
-        let _ = self.app.emit("trace-thinking-start", payload);
+        let _ = self.app.emit(event_names::TRACE_THINKING_START, payload);
     }
 
     fn emit_trace_thinking_end(&self, payload: TraceThinkingEvent) {
-        let _ = self.app.emit("trace-thinking-end", payload);
+        let _ = self.app.emit(event_names::TRACE_THINKING_END, payload);
     }
 
     fn emit_complete(&self, payload: AgentCompleteEvent) {
-        let _ = self.app.emit("agent-complete", payload);
+        let _ = self.app.emit(event_names::AGENT_COMPLETE, payload);
     }
 }
 
