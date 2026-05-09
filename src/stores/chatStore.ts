@@ -4,7 +4,6 @@ import type { AgentMode, Conversation, Message, TurnTrace } from '@/types';
 import {
   createConversation,
   deleteConversation,
-  setConversationTraceEnabled,
   appendTurn,
   updateLatestTurn,
   clearConversationTurns,
@@ -40,10 +39,6 @@ interface ChatState {
   getActiveConversation: () => Conversation | undefined;
   getFilteredConversations: () => Conversation[];
   setSelectedWorkDir: (path: string | null) => void;
-  setConversationTraceEnabled: (
-    conversationId: string,
-    traceEnabled: boolean,
-  ) => void;
   appendTurn: (conversationId: string, turn: TurnTrace) => void;
   updateLatestTurn: (
     conversationId: string,
@@ -73,10 +68,14 @@ interface ChatState {
 
   setStreaming: (isStreaming: boolean, messageId?: string | null) => void;
 
+  isTraceOpen: boolean;
+  setTraceOpen: (isTraceOpen: boolean) => void;
   isTracePinned: boolean;
   setTracePinned: (isPinned: boolean) => void;
   isTraceDocked: boolean;
   setTraceDocked: (isDocked: boolean) => void;
+  isAlwaysOnTop: boolean;
+  setAlwaysOnTop: (isAlwaysOnTop: boolean) => void;
 }
 
 export const useChatStore = create<ChatState>()(
@@ -87,6 +86,7 @@ export const useChatStore = create<ChatState>()(
       isStreaming: false,
       streamingMessageId: null,
       selectedWorkDir: null,
+      isTraceOpen: false,
 
       createConversation: (workDir?: string) => {
         const result = createConversation(get().conversations, workDir);
@@ -122,18 +122,6 @@ export const useChatStore = create<ChatState>()(
 
       setSelectedWorkDir: (path: string | null) =>
         set({ selectedWorkDir: path }),
-
-      setConversationTraceEnabled: (
-        conversationId: string,
-        traceEnabled: boolean,
-      ) =>
-        set((state) => ({
-          conversations: setConversationTraceEnabled(
-            state.conversations,
-            conversationId,
-            traceEnabled,
-          ),
-        })),
 
       appendTurn: (conversationId: string, turn: TurnTrace) =>
         set((state) => ({
@@ -237,6 +225,8 @@ export const useChatStore = create<ChatState>()(
       setStreaming: (isStreaming: boolean, messageId: string | null = null) =>
         set({ isStreaming, streamingMessageId: messageId }),
 
+      setTraceOpen: (isTraceOpen: boolean) => set({ isTraceOpen }),
+
       isTracePinned: false,
 
       setTracePinned: (isPinned: boolean) => set({ isTracePinned: isPinned }),
@@ -245,6 +235,11 @@ export const useChatStore = create<ChatState>()(
 
       setTraceDocked: (isDocked: boolean) =>
         set({ isTraceDocked: isDocked }),
+
+      isAlwaysOnTop: false,
+
+      setAlwaysOnTop: (isAlwaysOnTop: boolean) =>
+        set({ isAlwaysOnTop }),
     }),
     {
       name:
@@ -277,8 +272,10 @@ export const useChatStore = create<ChatState>()(
           selectedWorkDir: saved.selectedWorkDir ?? current.selectedWorkDir,
           isStreaming: false,
           streamingMessageId: null,
+          isTraceOpen: false,
           isTracePinned: saved.isTracePinned ?? false,
           isTraceDocked: saved.isTraceDocked ?? false,
+          isAlwaysOnTop: false,
         };
       },
     },

@@ -52,6 +52,12 @@ pub struct TraceDockingSnapshot {
     pub always_on_top_forced: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MainAlwaysOnTopChangedEvent {
+    pub always_on_top: bool,
+}
+
 // ─── Docking helpers ────────────────────────────────────────
 
 pub fn clamp_trace_docking_width(width: f64, _main_width: Option<u32>) -> f64 {
@@ -72,6 +78,13 @@ fn trace_docking_snapshot(docking: &TraceDockingState) -> TraceDockingSnapshot {
 
 fn emit_trace_docking_changed(app: &AppHandle, docking: &TraceDockingState) {
     let _ = app.emit(event_names::TRACE_DOCKING_CHANGED, trace_docking_snapshot(docking));
+}
+
+fn emit_main_always_on_top_changed(app: &AppHandle, always_on_top: bool) {
+    let _ = app.emit(
+        event_names::MAIN_ALWAYS_ON_TOP_CHANGED,
+        MainAlwaysOnTopChangedEvent { always_on_top },
+    );
 }
 
 fn window_frame_offset(window: &WebviewWindow) -> PhysicalPosition<i32> {
@@ -178,6 +191,15 @@ pub fn trace_docking_state(app: &AppHandle) -> TraceDockingSnapshot {
     trace_docking_snapshot(&load_trace_docking_state(app))
 }
 
+pub fn reset_main_always_on_top_state(app: &AppHandle) {
+    let mut docking = load_trace_docking_state(app);
+    docking.always_on_top = false;
+    docking.previous_always_on_top = None;
+    docking.hidden_with_main = false;
+    docking.hidden_while_docked = false;
+    save_trace_docking_state(app, docking);
+}
+
 pub fn set_trace_always_on_top_state(app: &AppHandle, always_on_top: bool) -> TraceDockingSnapshot {
     let mut docking = load_trace_docking_state(app);
     if docking.side.is_some() && !always_on_top {
@@ -196,6 +218,33 @@ pub fn set_trace_always_on_top_state(app: &AppHandle, always_on_top: bool) -> Tr
     trace_docking_snapshot(&docking)
 }
 
+pub fn set_main_always_on_top(app: &AppHandle, always_on_top: bool) -> Result<(), String> {
+    if let Some(main) = app.get_webview_window("main") {
+        main.set_always_on_top(always_on_top)
+            .map_err(|e| e.to_string())?;
+    }
+
+    let mut docking = load_trace_docking_state(app);
+    docking.always_on_top = always_on_top;
+    save_trace_docking_state(app, docking.clone());
+
+    if let Some(trace) = app.get_webview_window(TRACE_WINDOW_LABEL) {
+        if trace.is_visible().unwrap_or(false) {
+            let trace_always_on_top = if docking.side.is_some() {
+                true
+            } else {
+                always_on_top
+            };
+            trace.set_always_on_top(trace_always_on_top)
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    emit_trace_docking_changed(app, &docking);
+    emit_main_always_on_top_changed(app, always_on_top);
+    Ok(())
+}
+
 pub fn set_trace_docking_side(
     app: &AppHandle,
     side: Option<TraceDockingSide>,
@@ -204,11 +253,8 @@ pub fn set_trace_docking_side(
 
     match side {
         Some(side) => {
-            if docking.side.is_none() {
-                docking.previous_always_on_top = Some(docking.always_on_top);
-            }
             docking.side = Some(side);
-            docking.always_on_top = true;
+            docking.previous_always_on_top = None;
             docking.hidden_with_main = false;
             docking.hidden_while_docked = false;
             docking.attached_width = clamp_trace_docking_width(docking.attached_width, None);
@@ -232,9 +278,7 @@ pub fn exit_trace_docking(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     };
 
-    let restored_always_on_top = docking
-        .previous_always_on_top
-        .unwrap_or(docking.always_on_top);
+    let restored_always_on_top = docking.always_on_top;
     docking.side = None;
     docking.previous_always_on_top = None;
     docking.always_on_top = restored_always_on_top;
@@ -329,8 +373,8 @@ pub fn apply_trace_docking(app: &AppHandle) -> Result<(), String> {
 
     let _ = trace.show();
     trace.set_always_on_top(true).map_err(|e| e.to_string())?;
+    let _ = trace.set_focus();
 
-    docking.always_on_top = true;
     save_trace_docking_state(app, docking.clone());
     emit_trace_docking_changed(app, &docking);
     Ok(())

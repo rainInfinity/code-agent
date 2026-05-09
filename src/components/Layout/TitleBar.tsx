@@ -5,14 +5,18 @@ import {
   FaAngleLeft,
   FaAngleRight,
   FaBars,
+  FaThumbtack,
   FaRegWindowMaximize,
   FaRegWindowMinimize,
   FaRegWindowRestore,
   FaXmark,
 } from 'react-icons/fa6';
+import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   hideTraceForMainMinimize,
+  onMainAlwaysOnTopChanged,
+  setMainAlwaysOnTop,
   syncTraceDockingToMain,
 } from '@/hooks/useIpc';
 import {
@@ -163,13 +167,16 @@ const PlaceholderItem = styled.button`
   text-align: left;
 `;
 
-const WindowButton = styled.button<{ $danger?: boolean }>`
+const WindowButton = styled.button<{ $danger?: boolean; $active?: boolean }>`
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 46px;
   height: 100%;
-  color: ${({ theme }) => theme.colors.textSecondary};
+  color: ${({ $active, theme }) =>
+    $active ? theme.colors.accentPrimaryHover : theme.colors.textSecondary};
+  background-color: ${({ $active, theme }) =>
+    $active ? theme.colors.bgActive : 'transparent'};
   transition: background-color ${({ theme }) => theme.transitions.fast},
     color ${({ theme }) => theme.transitions.fast};
 
@@ -194,6 +201,8 @@ const menuEntries = Object.entries(titleBarMessages.menus) as Array<
 
 export const TitleBar: React.FC = () => {
   const { sidebarCollapsed, toggleSidebar } = useSettingsStore();
+  const isAlwaysOnTop = useChatStore((state) => state.isAlwaysOnTop);
+  const setAlwaysOnTop = useChatStore((state) => state.setAlwaysOnTop);
   const [openMenu, setOpenMenu] = useState<TitleBarMenuKey | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
   const menuRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -235,6 +244,24 @@ export const TitleBar: React.FC = () => {
       cleanupFocus?.();
     };
   }, [window]);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+
+    onMainAlwaysOnTopChanged((event) => {
+      setAlwaysOnTop(event.alwaysOnTop);
+    })
+      .then((unlisten) => {
+        cleanup = unlisten;
+      })
+      .catch(() => {
+        cleanup = undefined;
+      });
+
+    return () => {
+      cleanup?.();
+    };
+  }, [setAlwaysOnTop]);
 
   useEffect(() => {
     if (!openMenu) {
@@ -369,6 +396,23 @@ export const TitleBar: React.FC = () => {
       </DragSurface>
 
       <WindowControls onMouseDown={stopDrag} onDoubleClick={stopDrag}>
+        <WindowButton
+          type="button"
+          $active={isAlwaysOnTop}
+          onClick={() => {
+            const next = !isAlwaysOnTop;
+            setMainAlwaysOnTop(next)
+              .then(() => {
+                setAlwaysOnTop(next);
+              })
+              .catch(() => {});
+          }}
+          title={titleBarMessages.controls.alwaysOnTopTooltip}
+          aria-label={titleBarMessages.controls.alwaysOnTopTooltip}
+          aria-pressed={isAlwaysOnTop}
+        >
+          <FaThumbtack size={13} />
+        </WindowButton>
         <WindowButton
           type="button"
           onClick={() => {

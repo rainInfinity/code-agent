@@ -75,7 +75,12 @@
       "PowerShell(Get-ChildItem 'f:\\\\project\\\\code-agent\\\\openspec\\\\changes' -Directory | Where-Object { $_.Name -ne 'archive' } | Select-Object -ExpandProperty Name)",
       "Bash(Get-ChildItem -Recurse src-tauri/src -Name -File)",
       "PowerShell(Get-ChildItem -Recurse src-tauri/src -File | ForEach-Object { $_.FullName.Substring\\($_.FullName.IndexOf\\('src-tauri\\\\src\\\\'\\) + 12\\) } | Sort-Object)",
-      "PowerShell(Get-ChildItem -Recurse src -File | ForEach-Object { $_.FullName.Substring\\($_.FullName.IndexOf\\('src\\\\'\\) + 4\\) } | Sort-Object)"
+      "PowerShell(Get-ChildItem -Recurse src -File | ForEach-Object { $_.FullName.Substring\\($_.FullName.IndexOf\\('src\\\\'\\) + 4\\) } | Sort-Object)",
+      "Bash(Get-ChildItem -Path \"F:\\\\project\\\\code-agent\\\\openspec\" -Recurse -Depth 3)",
+      "Bash(Select-Object FullName, PSIsContainer)",
+      "Bash(Format-Table -AutoSize)",
+      "PowerShell($dirs = @\\(\"tauri-command-organization\", \"tauri-window-subsystem\", \"tauri-type-domain-split\", \"tauri-event-constants\"\\); foreach \\($d in $dirs\\) { $p = \"F:\\\\project\\\\code-agent\\\\openspec\\\\specs\\\\$d\"; if \\(Test-Path $p\\) { Write-Output \"EXISTS: $d\" } else { Write-Output \"NOT EXISTS: $d\" } })",
+      "PowerShell($specs = @\\(\"tauri-command-organization\", \"tauri-window-subsystem\", \"tauri-type-domain-split\", \"tauri-event-constants\"\\); foreach \\($s in $specs\\) { $dst = \"F:\\\\project\\\\code-agent\\\\openspec\\\\specs\\\\$s\"; New-Item -ItemType Directory -Path $dst -Force | Out-Null; Copy-Item -Path \"F:\\\\project\\\\code-agent\\\\openspec\\\\changes\\\\refactor-tauri-backend\\\\specs\\\\$s\\\\spec.md\" -Destination \"$dst\\\\spec.md\" -Force; Write-Output \"SYNCED: $s\" })"
     ],
     "additionalDirectories": [
       "F:\\project\\code-agent\\openspec\\changes\\multi-provider-api-config\\specs",

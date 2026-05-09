@@ -6,8 +6,8 @@ export interface Conversation {
   title: string;
   messages: Message[];
   turns: TurnTrace[];
+  turnsCleared?: boolean;
   createdAt: number;
   updatedAt: number;
   workDir?: string;
-  traceEnabled?: boolean;
 }

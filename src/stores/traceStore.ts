@@ -6,7 +6,6 @@ export const useTraceStore = create<TraceState>((set) => ({
   conversationId: null,
   sessionId: null,
   isPinned: useChatStore.getState().isTracePinned,
-  alwaysOnTop: false,
   docking: {
     side: null,
     attachedWidth: 420,
@@ -21,12 +20,9 @@ export const useTraceStore = create<TraceState>((set) => ({
     set({ isPinned });
   },
 
-  setAlwaysOnTop: (alwaysOnTop) => set({ alwaysOnTop }),
-
   setDocking: (docking) =>
     set({
       docking,
-      alwaysOnTop: docking.alwaysOnTop,
     }),
 
   reset: (conversationId = null) =>

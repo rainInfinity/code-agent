@@ -56,18 +56,6 @@ export function deleteConversation(
   };
 }
 
-export function setConversationTraceEnabled(
-  conversations: Conversation[],
-  conversationId: string,
-  traceEnabled: boolean,
-): Conversation[] {
-  return conversations.map((conversation) =>
-    conversation.id === conversationId
-      ? { ...conversation, traceEnabled, updatedAt: Date.now() }
-      : conversation,
-  );
-}
-
 export function appendTurn(
   conversations: Conversation[],
   conversationId: string,
@@ -78,6 +66,7 @@ export function appendTurn(
       ? {
           ...conversation,
           turns: [...(conversation.turns ?? []), turn],
+          turnsCleared: false,
           updatedAt: Date.now(),
         }
       : conversation,
@@ -112,7 +101,12 @@ export function clearConversationTurns(
 ): Conversation[] {
   return conversations.map((conversation) =>
     conversation.id === conversationId
-      ? { ...conversation, turns: [], updatedAt: Date.now() }
+      ? {
+          ...conversation,
+          turns: [],
+          turnsCleared: true,
+          updatedAt: Date.now(),
+        }
       : conversation,
   );
 }

@@ -11,6 +11,19 @@ import { useChatStore } from '@/stores/chatStore';
 import { useTraceStore } from '@/stores/traceStore';
 import type { Conversation, Message, TurnTrace } from '@/types';
 
+const ipcMocks = vi.hoisted(() => ({
+  emitTraceClearConversation: vi.fn().mockResolvedValue(undefined),
+  emitTracePinChanged: vi.fn().mockResolvedValue(undefined),
+  hideTraceWindow: vi.fn().mockResolvedValue(undefined),
+  setTraceDockingMode: vi.fn().mockResolvedValue({
+    side: null,
+    attachedWidth: 420,
+    isDocked: false,
+    alwaysOnTop: false,
+    alwaysOnTopForced: false,
+  }),
+}));
+
 vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: () => ({
     isMaximized: vi.fn().mockResolvedValue(false),
@@ -27,17 +40,10 @@ vi.mock('@/hooks/useTraceIpc', () => ({
 }));
 
 vi.mock('@/hooks/useIpc', () => ({
-  emitTraceClearConversation: vi.fn().mockResolvedValue(undefined),
-  emitTracePinChanged: vi.fn().mockResolvedValue(undefined),
-  hideTraceWindow: vi.fn().mockResolvedValue(undefined),
-  setTraceDockingMode: vi.fn().mockResolvedValue({
-    side: null,
-    attachedWidth: 420,
-    isDocked: false,
-    alwaysOnTop: false,
-    alwaysOnTopForced: false,
-  }),
-  setTraceAlwaysOnTop: vi.fn().mockResolvedValue(undefined),
+  emitTraceClearConversation: ipcMocks.emitTraceClearConversation,
+  emitTracePinChanged: ipcMocks.emitTracePinChanged,
+  hideTraceWindow: ipcMocks.hideTraceWindow,
+  setTraceDockingMode: ipcMocks.setTraceDockingMode,
 }));
 
 const renderWithTheme = (ui: React.ReactElement) =>
@@ -98,12 +104,12 @@ beforeEach(() => {
     streamingMessageId: null,
     selectedWorkDir: null,
     isTracePinned: false,
+    isAlwaysOnTop: false,
   });
   useTraceStore.setState({
     conversationId: null,
     sessionId: null,
     isPinned: false,
-    alwaysOnTop: false,
     docking: {
       side: null,
       attachedWidth: 420,
@@ -113,6 +119,10 @@ beforeEach(() => {
     },
     agentStatus: 'idle',
   });
+  ipcMocks.emitTraceClearConversation.mockClear();
+  ipcMocks.emitTracePinChanged.mockClear();
+  ipcMocks.hideTraceWindow.mockClear();
+  ipcMocks.setTraceDockingMode.mockClear();
 });
 
 describe('TracePanel folding', () => {
@@ -382,5 +392,29 @@ describe('TracePanel folding', () => {
     expect(
       screen.getAllByText(appMessages.trace.turnStatus.complete).length,
     ).toBeGreaterThan(0);
+  });
+
+  test('toggles pin state without coupling it to always-on-top', async () => {
+    const user = userEvent.setup();
+    const conversation = createConversation('trace-pin', 1);
+    useChatStore.setState({
+      conversations: [conversation],
+      activeConversationId: conversation.id,
+    });
+    useTraceStore.setState({
+      conversationId: conversation.id,
+      agentStatus: 'complete',
+    });
+
+    renderWithTheme(<TracePanel />);
+
+    await user.click(
+      screen.getByRole('button', {
+        name: appMessages.trace.pinTooltip,
+      }),
+    );
+
+    expect(useChatStore.getState().isTracePinned).toBe(true);
+    expect(ipcMocks.emitTracePinChanged).toHaveBeenCalledWith(true);
   });
 });

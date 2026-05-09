@@ -80,6 +80,10 @@ export async function setTraceAlwaysOnTop(alwaysOnTop: boolean): Promise<void> {
   return invoke('set_trace_always_on_top', { alwaysOnTop });
 }
 
+export async function setMainAlwaysOnTop(alwaysOnTop: boolean): Promise<void> {
+  return invoke('set_main_always_on_top', { alwaysOnTop });
+}
+
 export async function getTraceDockingState(): Promise<TraceDockingState> {
   return invoke('get_trace_docking_state');
 }
@@ -206,6 +210,12 @@ export async function onTraceDockingChanged(
   callback: (event: TraceDockingState) => void,
 ): Promise<UnlistenFn> {
   return listen<TraceDockingState>('trace-docking-changed', (e) => callback(e.payload));
+}
+
+export async function onMainAlwaysOnTopChanged(
+  callback: (event: { alwaysOnTop: boolean }) => void,
+): Promise<UnlistenFn> {
+  return listen<{ alwaysOnTop: boolean }>('main-always-on-top-changed', (e) => callback(e.payload));
 }
 
 export async function emitTraceConversationChanged(conversationId: string): Promise<void> {

@@ -165,6 +165,26 @@ describe('turns', () => {
     ]);
   });
 
+  test('does not rebuild fallback turns after a conversation has been cleared', () => {
+    const assistantMessage: Message = {
+      id: 'assistant-cleared',
+      role: 'assistant',
+      content: 'Final answer',
+      contentBlocks: [{ type: 'text', text: 'Final answer' }],
+      status: 'complete',
+      timestamp: 10,
+    };
+
+    const normalizedTurns = normalizeConversationTurns(
+      'conversation-1',
+      [createMessage('user-1', 'user', 'Inspect the workspace'), assistantMessage],
+      [],
+      true,
+    );
+
+    expect(normalizedTurns).toEqual([]);
+  });
+
   test('keeps failed tool results adjacent to tool_use before any assistant text', () => {
     const assistantMessageId = 'assistant-failed-tool';
     const messages: Message[] = [

@@ -174,7 +174,11 @@ const mergeSyncedConversations = (incoming: Conversation[]) => {
     const incomingTurns = conversation.turns ?? [];
     const existingTurns = existing?.turns ?? [];
 
-    if (incomingTurns.length === 0 && existingTurns.length > 0) {
+    if (
+      incomingTurns.length === 0 &&
+      existingTurns.length > 0 &&
+      !conversation.turnsCleared
+    ) {
       return {
         ...conversation,
         turns: existingTurns,

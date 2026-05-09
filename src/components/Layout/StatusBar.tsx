@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { FaCircle, FaChartLine } from 'react-icons/fa6';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -85,14 +85,11 @@ export const StatusBar: React.FC = () => {
   const isConfigured = useSettingsStore((s) => s.isConfigured());
   const isStreaming = useChatStore((s) => s.isStreaming);
   const activeConversationId = useChatStore((s) => s.activeConversationId);
-  const activeTraceEnabled = useChatStore((s) =>
-    s.conversations.find((conversation) => conversation.id === s.activeConversationId)?.traceEnabled ?? false,
-  );
-  const setConversationTraceEnabled = useChatStore((s) => s.setConversationTraceEnabled);
+  const isTraceOpen = useChatStore((s) => s.isTraceOpen);
+  const setTraceOpen = useChatStore((s) => s.setTraceOpen);
   const isPinned = useChatStore((s) => s.isTracePinned);
   const setPinned = useTraceStore((s) => s.setPinned);
   const setTraceDocked = useChatStore((s) => s.setTraceDocked);
-  const [traceOpen, setTraceOpen] = useState(false);
   const previousConversationIdRef = useRef<string | null>(activeConversationId);
 
   useEffect(() => {
@@ -113,10 +110,6 @@ export const StatusBar: React.FC = () => {
 
     onTraceWindowClosed(() => {
       setTraceOpen(false);
-      const currentId = useChatStore.getState().activeConversationId;
-      if (currentId) {
-        useChatStore.getState().setConversationTraceEnabled(currentId, false);
-      }
     })
       .then((cleanup) => {
         unlisten = cleanup;
@@ -164,7 +157,6 @@ export const StatusBar: React.FC = () => {
     onTraceClearConversation((event) => {
       const store = useChatStore.getState();
       store.clearConversationTurns(event.conversationId);
-      emitTraceSyncConversations(useChatStore.getState().conversations).catch(() => {});
     })
       .then((cleanup) => {
         unlistenClear = cleanup;
@@ -199,44 +191,36 @@ export const StatusBar: React.FC = () => {
 
       if (previousConversationId && previousConversationId !== activeConversationId && open) {
         const isTraceDocked = useChatStore.getState().isTraceDocked;
-        if (isPinned || isTraceDocked) {
-          setConversationTraceEnabled(activeConversationId, true);
+        if ((isTraceOpen && isPinned) || isTraceDocked) {
           await emitTraceConversationChanged(activeConversationId).catch(() => {});
           const conversations = useChatStore.getState().conversations;
           await emitTraceSyncConversations(conversations).catch(() => {});
-          if (!cancelled) setTraceOpen(true);
           return;
         }
 
         await hideTraceWindow().catch(() => {});
-        setConversationTraceEnabled(previousConversationId, false);
-        setConversationTraceEnabled(activeConversationId, false);
-        if (!cancelled) setTraceOpen(false);
+        setTraceOpen(false);
         return;
       }
 
-      if (activeTraceEnabled && !open) {
+      if (isTraceOpen && !open) {
         await openTraceWindow(activeConversationId).catch(() => {});
         await emitTraceConversationChanged(activeConversationId).catch(() => {});
         const conversations = useChatStore.getState().conversations;
         await emitTraceSyncConversations(conversations).catch(() => {});
-        if (!cancelled) setTraceOpen(true);
         return;
       }
 
-      if (activeTraceEnabled && open) {
+      if (isTraceOpen && open) {
         await emitTraceConversationChanged(activeConversationId).catch(() => {});
         const conversations = useChatStore.getState().conversations;
         await emitTraceSyncConversations(conversations).catch(() => {});
       }
 
-      if (!activeTraceEnabled && open) {
+      if (!isTraceOpen && open) {
         await hideTraceWindow().catch(() => {});
-        if (!cancelled) setTraceOpen(false);
         return;
       }
-
-      setTraceOpen(open);
     };
 
     void syncTraceWindow();
@@ -244,19 +228,17 @@ export const StatusBar: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeConversationId, activeTraceEnabled, isPinned, setConversationTraceEnabled]);
+  }, [activeConversationId, isPinned, isTraceOpen, setTraceOpen]);
 
   const toggleTrace = async () => {
     if (!activeConversationId) return;
-    const currentlyOpen = await isTraceWindowOpen().catch(() => traceOpen);
+    const currentlyOpen = await isTraceWindowOpen().catch(() => isTraceOpen);
     if (currentlyOpen) {
       await hideTraceWindow();
       setTraceOpen(false);
-      setConversationTraceEnabled(activeConversationId, false);
     } else {
       await openTraceWindow(activeConversationId);
       setTraceOpen(true);
-      setConversationTraceEnabled(activeConversationId, true);
       await emitTraceConversationChanged(activeConversationId).catch(() => {});
       const conversations = useChatStore.getState().conversations;
       await emitTraceSyncConversations(conversations).catch(() => {});
@@ -279,9 +261,9 @@ export const StatusBar: React.FC = () => {
       <StatusRight>
         <TraceButton
           type="button"
-          $active={traceOpen}
+          $active={isTraceOpen}
           disabled={!activeConversationId}
-          title={traceOpen ? messages.status.traceClose : messages.status.traceOpen}
+          title={isTraceOpen ? messages.status.traceClose : messages.status.traceOpen}
           onClick={() => {
             void toggleTrace();
           }}

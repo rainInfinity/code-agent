@@ -22,12 +22,12 @@ export function normalizePersistedConversations(
 
     return {
       ...conversation,
-      traceEnabled: conversation.traceEnabled ?? false,
       messages,
       turns: normalizeConversationTurns(
         conversation.id,
         messages,
         conversation.turns,
+        conversation.turnsCleared,
       ),
     };
   });

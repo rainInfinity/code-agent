@@ -85,12 +85,12 @@ beforeEach(() => {
     streamingMessageId: null,
     selectedWorkDir: null,
     isTracePinned: false,
+    isAlwaysOnTop: false,
   });
   useTraceStore.setState({
     conversationId: null,
     sessionId: null,
     isPinned: false,
-    alwaysOnTop: false,
     docking: {
       side: null,
       attachedWidth: 420,

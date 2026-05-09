@@ -1,6 +1,4 @@
-# trace-pin-window Specification
-
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: Pin Button in Trace Title Bar
 
@@ -53,6 +51,16 @@ Trace 窗口自定义标题栏 SHALL 在"展开/折叠全部"按钮和"独立窗
 - **WHEN** 用户切换到对话 B
 - **THEN** Trace 窗口 SHALL 保持打开并显示空状态
 
+## REMOVED Requirements
+
+### Requirement: 标题栏按钮布局包含窗口置顶按钮
+
+**Reason**: 窗口置顶按钮已移至主窗口 TitleBar。Trace 窗口标题栏不再需要独立的置顶按钮。
+
+**Migration**: 标题栏按钮布局更新为：拖拽区域（标题）、展开/折叠全部、跟随最新、保持打开、独立窗口/贴靠左/贴靠右、清除、最小化、最大化/还原、关闭。置顶功能通过主窗口 TitleBar 的全局置顶按钮使用。
+
+## ADDED Requirements
+
 ### Requirement: Pin 按钮在贴靠模式下禁用
 
 贴靠模式下，Pin 按钮 SHALL 处于禁用状态，因为贴靠模式已强制 Trace 窗口随主窗口保持可见。当 Trace 窗口退出贴靠模式时，Pin 按钮 SHALL 恢复为进入贴靠前的状态。
@@ -71,4 +79,3 @@ Trace 窗口自定义标题栏 SHALL 在"展开/折叠全部"按钮和"独立窗
 - **WHEN** 用户退出贴靠模式
 - **THEN** Pin 按钮 SHALL 恢复为激活状态
 - **AND** `isPinned` SHALL 恢复为 `true`
-

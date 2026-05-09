@@ -21,6 +21,11 @@ pub fn get_trace_docking_state(app: AppHandle) -> TraceDockingSnapshot {
 }
 
 #[tauri::command]
+pub fn set_main_always_on_top(app: AppHandle, always_on_top: bool) -> Result<(), String> {
+    window::set_main_always_on_top(&app, always_on_top)
+}
+
+#[tauri::command]
 pub fn set_trace_docking_mode(
     app: AppHandle,
     side: Option<TraceDockingSide>,

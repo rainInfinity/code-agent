@@ -23,6 +23,7 @@ pub mod event_names {
     pub const TRACE_THINKING_END: &str = "trace-thinking-end";
 
     // ─── Window events ───────────────────────────────────────
+    pub const MAIN_ALWAYS_ON_TOP_CHANGED: &str = "main-always-on-top-changed";
     pub const TRACE_DOCKING_CHANGED: &str = "trace-docking-changed";
     pub const TRACE_WINDOW_CLOSED: &str = "trace-window-closed";
 }

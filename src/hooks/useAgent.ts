@@ -411,10 +411,7 @@ export function useAgent() {
     let unlisten: (() => void) | undefined;
 
     onTraceWindowClosed(() => {
-      const { activeConversationId: currentId, setConversationTraceEnabled } = useChatStore.getState();
-      if (currentId) {
-        setConversationTraceEnabled(currentId, false);
-      }
+      useChatStore.getState().setTraceOpen(false);
     })
       .then((cleanup) => {
         unlisten = cleanup;

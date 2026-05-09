@@ -15,11 +15,17 @@ pub async fn open_trace_window(
     if docking.hidden_while_docked {
         docking.hidden_while_docked = false;
         window::save_trace_docking_state(&app, docking);
+        docking = window::load_trace_docking_state(&app);
     }
 
     if let Some(trace) = app.get_webview_window(TRACE_WINDOW_LABEL) {
         trace.show().map_err(|e| e.to_string())?;
         apply_trace_docking(&app)?;
+        if docking.side.is_none() {
+            trace
+                .set_always_on_top(docking.always_on_top)
+                .map_err(|e| e.to_string())?;
+        }
         trace.set_focus().map_err(|e| e.to_string())?;
         return Ok(());
     }
@@ -55,6 +61,11 @@ pub async fn open_trace_window(
 
     setup_trace_window_state(&app, &trace);
     apply_trace_docking(&app)?;
+    if docking.side.is_none() {
+        trace
+            .set_always_on_top(docking.always_on_top)
+            .map_err(|e| e.to_string())?;
+    }
 
     Ok(())
 }

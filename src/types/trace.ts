@@ -96,11 +96,9 @@ export interface TraceState {
   conversationId: string | null;
   sessionId: string | null;
   isPinned: boolean;
-  alwaysOnTop: boolean;
   docking: TraceDockingState;
   agentStatus: AgentStatus;
   setPinned: (isPinned: boolean) => void;
-  setAlwaysOnTop: (alwaysOnTop: boolean) => void;
   setDocking: (docking: TraceDockingState) => void;
   reset: (conversationId?: string | null) => void;
   clearTurns: (conversationId: string) => void;

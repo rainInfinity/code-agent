@@ -222,11 +222,17 @@ export const normalizeConversationTurns = (
   conversationId: string,
   messages: Message[],
   turns: TurnTrace[] | undefined,
+  turnsCleared = false,
 ): TurnTrace[] => {
   const assistantMessages = messages.filter((message) => message.role === 'assistant');
   const assistantIds = assistantMessages.map((message) => message.id);
   const assistantOrder = buildAssistantOrderMap(messages);
   const rawTurns = turns ?? [];
+
+  if (rawTurns.length === 0 && turnsCleared) {
+    return [];
+  }
+
   const groupAssignments = new Map<string, string | undefined>();
   let assistantCursor = 0;
 

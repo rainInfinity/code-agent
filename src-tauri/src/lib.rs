@@ -18,6 +18,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            window::reset_main_always_on_top_state(app.handle());
             app.manage(state::AppState::new(app.handle()));
             window::lifecycle::setup_window_state(app);
             Ok(())
@@ -32,6 +33,7 @@ pub fn run() {
             commands::trace::close_trace_window,
             commands::trace::is_trace_window_open,
             commands::docking::set_trace_always_on_top,
+            commands::docking::set_main_always_on_top,
             commands::docking::get_trace_docking_state,
             commands::docking::set_trace_docking_mode,
             commands::docking::exit_trace_docking,

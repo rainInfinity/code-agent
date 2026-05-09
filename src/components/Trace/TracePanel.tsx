@@ -29,7 +29,6 @@ import {
   emitTracePinChanged,
   hideTraceWindow,
   setTraceDockingMode,
-  setTraceAlwaysOnTop,
 } from '@/hooks/useIpc';
 import { useTurnFold } from '@/hooks/useTurnFold';
 import { useTraceIpc } from '@/hooks/useTraceIpc';
@@ -44,7 +43,6 @@ const TRACE_USER_SCROLL_INTENT_MS = 650;
 const TRACE_COLLAPSE_ALL_LABEL = '\u5168\u90e8\u6536\u8d77';
 const TRACE_EXPAND_ALL_LABEL = '\u5168\u90e8\u6253\u5f00';
 const TRACE_FOLLOW_LATEST_LABEL = '\u8ddf\u968f\u6700\u65b0';
-const TRACE_PIN_AND_TOP_LABEL = '\u4fdd\u6301\u6253\u5f00\u5e76\u7f6e\u9876';
 
 const getTurnKey = (turn: TurnTrace) => `${turn.sessionId}-${turn.turnNumber}`;
 
@@ -164,8 +162,6 @@ export const TracePanel: React.FC = () => {
   const conversationId = useTraceStore((state) => state.conversationId);
   const isPinned = useChatStore((state) => state.isTracePinned);
   const setPinned = useTraceStore((state) => state.setPinned);
-  const alwaysOnTop = useTraceStore((state) => state.alwaysOnTop);
-  const setAlwaysOnTop = useTraceStore((state) => state.setAlwaysOnTop);
   const docking = useTraceStore((state) => state.docking);
   const setDocking = useTraceStore((state) => state.setDocking);
   const clearTurns = useTraceStore((state) => state.clearTurns);
@@ -188,7 +184,6 @@ export const TracePanel: React.FC = () => {
     ? TRACE_COLLAPSE_ALL_LABEL
     : TRACE_EXPAND_ALL_LABEL;
   const isDocked = docking.isDocked;
-  const pinAndTopActive = isDocked || (isPinned && alwaysOnTop);
 
   const getDistanceFromBottom = useCallback((el: HTMLElement) => {
     return Math.max(0, el.scrollHeight - el.scrollTop - el.clientHeight);
@@ -507,13 +502,11 @@ export const TracePanel: React.FC = () => {
     event.stopPropagation();
   };
 
-  const togglePinAndAlwaysOnTop = () => {
+  const togglePin = () => {
     if (isDocked) return;
-    const next = !pinAndTopActive;
+    const next = !isPinned;
     setPinned(next);
-    setAlwaysOnTop(next);
     emitTracePinChanged(next).catch(() => {});
-    setTraceAlwaysOnTop(next).catch(() => {});
   };
 
   const changeDockingMode = (side: 'left' | 'right' | null) => {
@@ -596,20 +589,20 @@ export const TracePanel: React.FC = () => {
           </WindowButton>
           <WindowButton
             type="button"
-            $active={pinAndTopActive}
+            $active={isPinned}
             disabled={isDocked}
             title={
               isDocked
-                ? messages.trace.alwaysOnTopForcedByDocking
-                : TRACE_PIN_AND_TOP_LABEL
+                ? messages.trace.pinDisabledInDock
+                : messages.trace.pinTooltip
             }
             aria-label={
               isDocked
-                ? messages.trace.alwaysOnTopForcedByDocking
-                : TRACE_PIN_AND_TOP_LABEL
+                ? messages.trace.pinDisabledInDock
+                : messages.trace.pinTooltip
             }
-            aria-pressed={pinAndTopActive}
-            onClick={togglePinAndAlwaysOnTop}
+            aria-pressed={isPinned}
+            onClick={togglePin}
           >
             <FaThumbtack size={13} />
           </WindowButton>

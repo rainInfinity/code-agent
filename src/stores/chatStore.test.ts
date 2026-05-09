@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'vitest';
-import type { Conversation, Message } from '@/types';
+import type { Conversation, Message, TurnTrace } from '@/types';
 import {
   CHAT_HISTORY_STORAGE_KEY,
   normalizePersistedConversations,
@@ -15,6 +15,24 @@ const createConversation = (message: Message): Conversation => ({
   updatedAt: 1,
 });
 
+const createTurn = (): TurnTrace => ({
+  turnNumber: 1,
+  sessionId: 'session-1',
+  conversationId: 'conversation-1',
+  assistantMessageId: 'assistant-1',
+  startTime: 1,
+  endTime: 2,
+  status: 'complete',
+  thinking: {
+    content: '',
+    status: 'idle',
+  },
+  response: {
+    content: 'Done',
+  },
+  tools: [],
+});
+
 describe('normalizePersistedConversations', () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -26,6 +44,7 @@ describe('normalizePersistedConversations', () => {
       selectedWorkDir: null,
       isTracePinned: false,
       isTraceDocked: false,
+      isAlwaysOnTop: false,
     });
   });
 
@@ -139,6 +158,54 @@ describe('normalizePersistedConversations', () => {
     });
   });
 
+  test('keeps cleared turns empty across persistence rehydration', () => {
+    const message: Message = {
+      id: 'assistant-cleared',
+      role: 'assistant',
+      content: 'Final answer',
+      contentBlocks: [{ type: 'text', text: 'Final answer' }],
+      status: 'complete',
+      timestamp: 1,
+    };
+
+    const [conversation] = normalizePersistedConversations([
+      {
+        ...createConversation(message),
+        turnsCleared: true,
+      },
+    ]);
+
+    expect(conversation.turns).toEqual([]);
+    expect(conversation.turnsCleared).toBe(true);
+  });
+
+  test('marks turns as cleared and resets the flag when a new turn arrives', () => {
+    const message: Message = {
+      id: 'assistant-live',
+      role: 'assistant',
+      content: 'Answer',
+      contentBlocks: [{ type: 'text', text: 'Answer' }],
+      status: 'complete',
+      timestamp: 1,
+    };
+
+    useChatStore.setState({
+      conversations: [createConversation(message)],
+      activeConversationId: 'conversation-1',
+    });
+
+    useChatStore.getState().clearConversationTurns('conversation-1');
+    expect(useChatStore.getState().conversations[0]).toMatchObject({
+      turns: [],
+      turnsCleared: true,
+    });
+
+    useChatStore.getState().appendTurn('conversation-1', createTurn());
+    expect(useChatStore.getState().conversations[0]).toMatchObject({
+      turnsCleared: false,
+    });
+  });
+
   test('persists selected work directory across app restarts', () => {
     const selectedWorkDir = 'F:\\project\\ai-test';
 
@@ -155,12 +222,16 @@ describe('normalizePersistedConversations', () => {
     const merge = (useChatStore as typeof useChatStore & {
       persist: {
         getOptions: () => {
-          merge: (persisted: unknown, current: unknown) => unknown;
+          merge?: unknown;
         };
       };
-    }).persist.getOptions().merge;
+    }).persist.getOptions().merge as
+      | ((persisted: unknown, current: unknown) => unknown)
+      | undefined;
 
-    const merged = merge(
+    expect(merge).toBeTypeOf('function');
+
+    const merged = merge!(
       { selectedWorkDir },
       {
         selectedWorkDir: null,
@@ -170,6 +241,7 @@ describe('normalizePersistedConversations', () => {
         streamingMessageId: null,
         isTracePinned: false,
         isTraceDocked: false,
+        isAlwaysOnTop: false,
       },
     ) as { selectedWorkDir: string | null };
 
