@@ -303,11 +303,12 @@ AgentRuntime (轻量调度器)
 
 ## 当前限制与待实现
 
-1. **无权限检查** — 工具直接执行，不经过用户确认（Phase 3 规划）
-2. **无上下文裁剪** — 长对话没有 token 预算管理和自动压缩（Phase 3 规划）
-3. **单 Agent 运行** — 不支持子 Agent 委托（Phase 4 规划）
-4. **无会话序列化** — 崩溃后无法恢复会话（Phase 7 规划）
-5. **工具串行执行** — 多个 tool_use 逐个执行，不支持并行（Phase 7 规划）
+1. **无权限检查** — Agent Loop 绕过工具级 `check_permissions()`，直接执行所有工具（Phase 3 规划）
+2. **Agent Loop 未切换并发执行** — `ToolExecutor.execute_batch()` 已实现并发分区，但 Agent Loop 仍逐个串行执行工具（Phase 7 切换）
+3. **无上下文裁剪** — 长对话没有 token 预算管理和自动压缩（Phase 3 规划）
+4. **单 Agent 运行** — 不支持子 Agent 委托（Phase 4 规划）
+5. **无会话序列化** — 崩溃后无法恢复会话（Phase 7 规划）
+6. **`agent_type` 用字符串非枚举** — 缺少编译期类型检查，新增 Agent 类型需同步多处
 
 ---
 

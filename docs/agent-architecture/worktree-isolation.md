@@ -219,9 +219,9 @@ async fn run_agent(session: &mut AgentSession) {
 │  Agent 在隔离工作区完成以下变更:                   │
 │                                                │
 │  ┌──────────────────────────────────────────┐  │
-│  │  src-tauri/src/commands.rs   +45  -12    │  │
-│  │  src-tauri/src/models.rs     +120 -8     │  │
-│  │  src/components/Auth.tsx     +200 (new)  │  │
+│  │  src-tauri/src/commands/chat.rs  +45  -12    │  │
+│  │  src-tauri/src/models/chat.rs    +120 -8     │  │
+│  │  src/components/Auth.tsx         +200 (new)  │  │
 │  └──────────────────────────────────────────┘  │
 │                                                │
 │  分支: wt-sess_abc123                           │

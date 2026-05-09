@@ -255,8 +255,8 @@ async fn agent_loop(session: &mut AgentSession, cancel: CancellationToken) {
 │  4. 前端登录表单                                     │
 │                                                    │
 │  ## 涉及文件                                        │
-│  src-tauri/src/models.rs                           │
-│  src-tauri/src/commands.rs                         │
+│  src-tauri/src/models/chat.rs                      │
+│  src-tauri/src/commands/chat.rs                    │
 │  src/components/LoginForm.tsx                       │
 │                                                    │
 │  ─────────────────────────────────────────────     │

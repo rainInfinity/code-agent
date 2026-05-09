@@ -8,7 +8,7 @@
 
 Tool System 定义和执行 Agent 可用的所有工具。设计上借鉴了 Claude Code 工具系统的核心模式：**Builder + 安全默认**、**并发安全分区**、**三层条件注册**和**工具级权限委托**。
 
-**当前状态:** Phase 2 框架部分已完成。Trait + Registry + Executor 均已实现并集成到 Agent Loop，但**具体工具尚未实现**——`with_defaults()` 返回空注册表。
+**当前状态:** Phase 2 已完成。Trait + Registry + Executor + 核心工具（文件/搜索/Shell）均已实现并集成到 Agent Loop。网络工具和 Agent Loop 的 execute_batch 并发分区切换待完成。
 
 ---
 
@@ -24,8 +24,8 @@ Tool System 定义和执行 Agent 可用的所有工具。设计上借鉴了 Cla
 │  │                  │  │   结果截断)      │  │               │   │
 │  └──────────────────┘  └──────────────────┘  └──────────────┘   │
 │                                                                   │
-│  已实现: 框架就绪，待注册具体工具                                  │
-│  待实现: read_file, write_file, grep, bash, sandbox ...          │
+│  已实现: read_file, write_file, edit_file, grep, glob, list_dir, bash, powershell   │
+│  待实现: web_search, web_fetch, delete_file, git 系列, Agent Loop 中切换 execute_batch │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -681,12 +681,13 @@ ToolExecutor
 
 ## 当前限制与待实现
 
-1. **无具体工具** — 需要逐个实现文件系统、搜索、Shell 等工具（Phase 2 P0）
-2. **无沙箱控制** — `SandboxConfig` 路径白名单/命令黑名单未实现（Phase 3 规划）
-3. **无权限检查** — 所有工具直接执行，不区分风险等级（Phase 3 规划）
-4. **并行执行未分区** — 当前 `execute_batch` 尚未实现，多个 tool_use 逐个串行执行
-5. **无工具输出上下文感知截断** — 简单字符截断可能破坏 JSON/代码结构（Phase 3 规划）
-6. **无 MCP 集成** — `assemble_tool_pool` 中 MCP 部分预留但未实现
+1. **Agent Loop 未使用并发执行** — `ToolExecutor.execute_batch()` 已完成（含 `partition_tool_calls` 并发分区 + 结构化截断），但 Agent Loop 中仍逐个串行执行工具（Phase 7 切换）
+2. **网络工具未实现** — `web_search`、`web_fetch` 目录骨架已就绪，具体实现未完成（Phase 3 规划）
+3. **文件删除工具未实现** — `delete_file` 未实现，出于安全考虑（Phase 3 规划）
+4. **Git 工具未实现** — `git_diff`、`git_log` 目录未创建（Phase 3 规划）
+5. **沙箱控制未强制执行** — `SandboxConfig` 结构已定义，但 ToolExecutor 未在 execute_one 中调用沙箱验证
+6. **无权限检查** — Agent Loop 绕过 `check_permissions()` 直接执行工具（Phase 3 规划）
+7. **无 MCP 集成** — `assemble_tool_pool` 中 MCP 部分预留但未实现
 
 ---
 

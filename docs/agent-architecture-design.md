@@ -44,14 +44,20 @@
 ┌────────────────────┼─────────────────────────────────┐
 │                Backend (Rust/Tauri)                   │
 │  ┌──────────┐  ┌──────────┐  ┌──────────────────┐   │
-│  │ commands │  │  models  │  │    providers/     │   │
-│  │          │  │          │  │ Anthropic/DeepSeek│   │
-│  │send_msg  │  │ChatMsg   │  │ /OpenAI           │   │
-│  │save_set  │  │Settings  │  └──────────────────┘   │
+│  │commands/ │  │ models/  │  │    providers/     │   │
+│  │chat/agent│  │chat/api  │  │ Anthropic/DeepSeek│   │
+│  │/trace/   │  │/events/  │  │ /OpenAI           │   │
+│  │docking/  │  │settings/ │  └──────────────────┘   │
+│  │settings  │  │tools     │                         │
 │  └──────────┘  └──────────┘                         │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────────┐   │
+│  │  tools/  │  │   llm    │  │    window/        │   │
+│  │(file/    │  │  Client  │  │  state/docking/   │   │
+│  │ search/  │  │          │  │  lifecycle        │   │
+│  │ shell)   │  └──────────┘  └──────────────────┘   │
+│  └──────────┘                                       │
 │  ┌──────────┐  ┌──────────┐                         │
-│  │  tools   │  │   llm    │  ← Tool trait + Registry │
-│  │(框架就绪)│  │  Client  │    已接入 Agent Loop    │
+│  │ events.rs│  │state.rs  │  ← 事件常量 + 全局状态  │
 │  └──────────┘  └──────────┘                         │
 └─────────────────────────────────────────────────────┘
 ```
@@ -62,7 +68,7 @@
 | ----------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | 多 Provider | ✅ Anthropic/OpenAI/DeepSeek          | 保持，扩展为 Agent 模式                                                                               |
 | 流式响应    | ✅ SSE streaming（含 thinking delta） | 保持                                                                                                  |
-| 工具系统    | ⚠️ 框架就绪，具体工具未注册           | ✅ 完整工具注册/执行/结果回传 → [Tool System](agent-architecture/tool-system.md)                      |
+| 工具系统    | ✅ 文件/搜索/Shell 等核心工具已实现    | 保持，扩展 web/git 等更多工具 → [Tool System](agent-architecture/tool-system.md)                      |
 | 对话循环    | ✅ 多轮 Think→Act→Observe 循环        | 保持，扩展权限检查 → [Agent Runtime](agent-architecture/agent-runtime.md)                             |
 | 上下文管理  | ❌ 无                                 | ✅ Token 感知的窗口管理 → [Context Manager](agent-architecture/context-manager.md)                    |
 | Prompt 缓存 | ⚠️ CACHE_BOUNDARY 标记已插入          | ✅ Anthropic prompt cache（需 cache_control 头） → [Prompt Cache](agent-architecture/prompt-cache.md) |
@@ -89,10 +95,10 @@
 
 4. Token 计数 / 上下文窗口管理 — 前端有 token 统计但无预算管理和自动裁剪
 5. `stop_streaming` — 有 `CancellationToken` 支持的 `stop_agent`，但 `stop_streaming` 命令仍是空实现
+6. 工具并发安全分区 — `ToolExecutor` 框架已实现 `partition_tool_calls()` 和结构化截断，但 Agent Loop 中尚未使用 `execute_batch()`
 
-**仍待解决 (Phase 2+ 规划):**
+**仍待解决 (Phase 3+ 规划):**
 
-6. 无具体工具实现 — Tool trait + ToolRegistry + ToolExecutor 框架就绪，但 `with_defaults()` 返回空注册表，无 read_file/bash/grep 等工具
 7. 无跨会话记忆 — 每次对话从零开始，Agent 不记得用户偏好
 8. 无规划审批 — Agent 直接执行复杂任务，可能偏离用户意图
 9. 文件操作无隔离 — Agent 修改直接影响用户工作区
@@ -362,20 +368,20 @@ User          Frontend           Rust Backend           LLM API
 | `run_agent`                    | 启动 Agent 多轮循环                | ✅ 已实现   | Agent Runtime     |
 | `stop_agent`                   | 取消指定 Agent Session             | ✅ 已实现   | Agent Runtime     |
 | `stop_streaming`               | 停止流式请求                       | ⚠️ 占位实现 | —                 |
-| `save_settings`                | 保存设置                           | ✅ 已实现   | —                 |
-| `load_settings`                | 加载设置                           | ✅ 已实现   | —                 |
-| `list_models`                  | 列出可用模型                       | ✅ 已实现   | —                 |
-| `open_trace_window`            | 打开 Trace 窗口                    | ✅ 已实现   | Window Mgmt       |
-| `hide_trace_window`            | 隐藏 Trace 窗口                    | ✅ 已实现   | Window Mgmt       |
-| `close_trace_window`           | 关闭 Trace 窗口                    | ✅ 已实现   | Window Mgmt       |
-| `is_trace_window_open`         | 查询 Trace 窗口是否打开            | ✅ 已实现   | Window Mgmt       |
-| `set_trace_always_on_top`      | 设置 Trace 置顶                    | ✅ 已实现   | Window Mgmt       |
-| `get_trace_docking_state`      | 获取停靠状态                       | ✅ 已实现   | Window Mgmt       |
-| `set_trace_docking_mode`       | 设置停靠模式                       | ✅ 已实现   | Window Mgmt       |
-| `exit_trace_docking`           | 退出停靠                           | ✅ 已实现   | Window Mgmt       |
-| `sync_trace_docking_width`     | 同步停靠宽度                       | ✅ 已实现   | Window Mgmt       |
-| `sync_trace_docking_to_main`   | 同步停靠位置                       | ✅ 已实现   | Window Mgmt       |
-| `hide_trace_for_main_minimize` | 主窗口最小化时隐藏 Trace           | ✅ 已实现   | Window Mgmt       |
+| `save_settings`                 | 保存设置                           | ✅ 已实现   | commands/settings.rs      |
+| `load_settings`                | 加载设置                           | ✅ 已实现   | commands/settings.rs      |
+| `list_models`                  | 列出可用模型                       | ✅ 已实现   | commands/settings.rs      |
+| `open_trace_window`            | 打开 Trace 窗口                    | ✅ 已实现   | commands/trace.rs         |
+| `hide_trace_window`            | 隐藏 Trace 窗口                    | ✅ 已实现   | commands/trace.rs         |
+| `close_trace_window`           | 关闭 Trace 窗口                    | ✅ 已实现   | commands/trace.rs         |
+| `is_trace_window_open`         | 查询 Trace 窗口是否打开            | ✅ 已实现   | commands/trace.rs         |
+| `set_trace_always_on_top`      | 设置 Trace 置顶                    | ✅ 已实现   | commands/docking.rs       |
+| `get_trace_docking_state`      | 获取停靠状态                       | ✅ 已实现   | commands/docking.rs       |
+| `set_trace_docking_mode`       | 设置停靠模式                       | ✅ 已实现   | commands/docking.rs       |
+| `exit_trace_docking`           | 退出停靠                           | ✅ 已实现   | commands/docking.rs       |
+| `sync_trace_docking_width`     | 同步停靠宽度                       | ✅ 已实现   | commands/docking.rs       |
+| `sync_trace_docking_to_main`   | 同步停靠位置                       | ✅ 已实现   | commands/docking.rs       |
+| `hide_trace_for_main_minimize` | 主窗口最小化时隐藏 Trace           | ✅ 已实现   | commands/docking.rs       |
 | `respond_permission`           | 响应用户权限请求                   | ❌ 未实现   | Permission System |
 | `create_task`                  | 手动创建任务                       | ❌ 未实现   | Task System       |
 
@@ -408,10 +414,33 @@ User          Frontend           Rust Backend           LLM API
 ```
 src-tauri/src/
 ├── main.rs                    # 入口
-├── lib.rs                     # Tauri 启动配置 + 窗口管理 + Trace 停靠引擎
-├── commands.rs                # Tauri Commands (19 个命令)
-├── models.rs                  # 共享数据类型（消息、事件、工具、设置等）
+├── lib.rs                     # Tauri 启动配置 + 模块声明（<80 行）
+├── state.rs                   # AppState（全局状态管理）
+├── events.rs                  # 事件名称常量（event_names 模块，16 个常量）
+├── settings_io.rs             # 设置文件读写辅助函数
 ├── llm.rs                     # LlmClient（流式聊天 + tool-use 流）
+│
+├── commands/                  # ✅ [Tauri Commands] — 按功能域拆分为 5 个文件
+│   ├── mod.rs                 # 统一导出桶，提供 commands::all_commands()
+│   ├── chat.rs                # send_message, stop_streaming
+│   ├── agent.rs               # run_agent, stop_agent
+│   ├── trace.rs               # open/hide/close_trace_window, is_trace_window_open
+│   ├── docking.rs             # Trace 停靠控制 (7 个命令)
+│   └── settings.rs            # save_settings, load_settings, list_models
+│
+├── window/                    # ✅ [Window 子系统] — 独立窗口管理模块
+│   ├── mod.rs                 # 重新导出 + 公共常量（TRACE_WINDOW_LABEL 等）
+│   ├── state.rs               # WindowState 序列化/恢复
+│   ├── docking.rs             # Trace 停靠计算和状态管理
+│   └── lifecycle.rs           # 窗口事件监听、创建/关闭/最小化处理
+│
+├── models/                    # ✅ [数据类型] — 按使用场景拆分为 5 个文件
+│   ├── mod.rs                 # 统一导出桶
+│   ├── chat.rs                # ChatMessage, ContentBlock 枚举
+│   ├── api.rs                 # AnthropicRequest, StreamEvent, OpenAiChatRequest 等
+│   ├── events.rs              # StreamDeltaEvent, ToolCallEvent 等 16 种事件负载
+│   ├── settings.rs            # ProviderSettings, PersistedSettings, SettingsResponse
+│   └── tools.rs               # ToolResult, ToolDefinition, SessionContext, ToolMeta
 │
 ├── agent/                     # ✅ [Agent Runtime]
 │   ├── mod.rs                 # 模块导出
@@ -425,7 +454,7 @@ src-tauri/src/
 │   ├── templates.rs           # PromptSection, PromptTemplate, TemplateRegistry
 │   └── builtins.rs            # 内置模板注册（code/chat），CACHE_BOUNDARY 常量
 │
-├── tools/                     # ⚠️ [Tool System] — 框架就绪，具体工具未实现
+├── tools/                     # ✅ [Tool System] — 核心工具已实现
 │   ├── mod.rs                 # Tool trait + ToolMeta + ToolRegistry（三层条件注册）
 │   ├── executor.rs            # ToolExecutor（并发安全分区 + 超时 + 结构化截断）
 │   ├── sandbox.rs             # SandboxConfig（路径白名单/命令黑名单/正则模式）
@@ -433,21 +462,16 @@ src-tauri/src/
 │   │   ├── mod.rs
 │   │   ├── read_file.rs       # 读文件（支持行范围 + 图片/PDF）
 │   │   ├── write_file.rs      # 创建/覆盖文件
-│   │   ├── edit_file.rs       # 精确字符串替换
-│   │   └── delete_file.rs     # 删除文件
+│   │   └── edit_file.rs       # 精确字符串替换
 │   ├── search/                # 代码搜索工具
 │   │   ├── mod.rs
 │   │   ├── grep.rs            # 正则搜索代码内容
 │   │   ├── glob.rs            # 按模式匹配文件名
 │   │   └── list_dir.rs        # 列出目录结构
-│   ├── shell/                 # Shell 执行工具
-│   │   ├── mod.rs
-│   │   ├── bash.rs            # Bash 执行
-│   │   └── powershell.rs      # PowerShell 执行
-│   └── web/                   # 网络工具
+│   └── shell/                 # Shell 执行工具
 │       ├── mod.rs
-│       ├── web_search.rs      # 搜索引擎请求
-│       └── web_fetch.rs       # URL 获取 + HTML → Markdown
+│       ├── bash.rs            # Bash 执行
+│       └── powershell.rs      # PowerShell 执行
 │
 ├── providers/                 # ✅ [Provider System]
 │   ├── mod.rs                 # LlmProvider trait + provider_from_id()
@@ -469,7 +493,7 @@ src-tauri/src/
 ├── memory/                    # ❌ Memory System — 未实现
 ├── worktree/                  # ❌ Worktree Isolation — 未实现
 ├── hooks/                     # ❌ Hooks System — 未实现
-├── commands/                  # ❌ Slash Commands — 未实现
+├── slash/                     # ❌ Slash Commands — 未实现
 ├── permission/                # ❌ Permission System — 未实现
 ├── task/                      # ❌ Task System — 未实现
 ├── plan/                      # ❌ Plan Mode — 未实现
@@ -481,37 +505,55 @@ src-tauri/src/
 > **图例**: ✅ 已实现 | ❌ 未实现
 
 ```
-src/
-├── main.tsx                    # 入口：检测主窗口/Trace 窗口，渲染对应 App
-├── trace-main.tsx              # Trace 窗口独立入口
-├── App.tsx                     # 主应用组件（主题、布局）
-├── TraceApp.tsx                # Trace 应用组件
-
-├── types/
-│   └── index.ts                # 全部 TypeScript 类型定义
-
+├── types/                     # ✅ TypeScript 类型定义（按领域拆分）
+│   ├── index.ts               # 统一导出
+│   ├── base.ts                # 基础通用类型
+│   ├── conversation.ts        # 对话相关类型
+│   ├── events.ts              # IPC 事件负载类型
+│   ├── message.ts             # 消息和 ContentBlock 类型
+│   ├── provider.ts            # Provider 和模型类型
+│   ├── settings.ts            # 设置相关类型
+│   ├── store.ts               # Store 状态类型
+│   └── trace.ts               # Trace 窗口类型
+│
 ├── config/
-│   └── providers.ts            # Provider 定义（Anthropic, DeepSeek）
-
+│   ├── providers.ts            # Provider 定义（Anthropic, DeepSeek）
+│   └── foldConfig.ts           # 消息折叠/展开配置
+│
 ├── stores/                     # Zustand 状态管理
 │   ├── settingsStore.ts        # 设置状态（provider、主题、侧边栏、工作目录、agent 模式）— persist
 │   ├── chatStore.ts            # 聊天状态（对话、消息、流状态、Trace pin）— persist
 │   ├── agentStore.ts           # Agent 运行时状态（运行/空闲、回合数、待处理工具调用）
-│   └── traceStore.ts           # Trace 窗口状态（停靠、置顶、对话绑定）
-
+│   ├── traceStore.ts           # Trace 窗口状态（停靠、置顶、对话绑定）
+│   ├── contentBlockUtils.ts    # ContentBlock 工具函数
+│   ├── conversationActions.ts  # 对话 CRUD 操作
+│   ├── messageActions.ts       # 消息操作（add/edit/clear）
+│   └── persistenceUtils.ts    # 序列化/反序列化辅助
+│
 ├── hooks/                      # React hooks + IPC 封装
-│   ├── useIpc.ts               # 27 个 invoke() 封装 + 28 个 listen() 事件监听
+│   ├── useIpc.ts               # invoke() 封装 + listen() 事件监听
 │   ├── useChat.ts              # useAgent() 的重新导出
 │   ├── useAgent.ts             # 核心 agent hook：发送/停止/事件监听/流缓冲
-│   └── useTraceIpc.ts          # Trace 窗口 IPC 生命周期管理
-
+│   ├── useTraceIpc.ts          # Trace 窗口 IPC 生命周期管理
+│   ├── useMessageFold.ts       # 消息折叠状态管理
+│   ├── useTurnFold.ts          # 回合折叠状态管理
+│   └── foldState.ts            # 折叠状态工具函数
+│
 ├── components/
 │   ├── Chat/
 │   │   ├── ChatPanel.tsx       # 主聊天 UI 编排
 │   │   ├── MessageInput.tsx    # 输入框 + 模式选择器 + 发送/停止按钮
 │   │   ├── MessageList.tsx     # 虚拟化消息列表 + 自动滚动 + 复制
+│   │   ├── MessageItem.tsx     # 单条消息渲染（含折叠/展开）
+│   │   ├── MessageBodyContent.tsx # 消息体 ContentBlock 统一渲染
 │   │   ├── MarkdownRenderer.tsx # 带代码高亮的 Markdown 渲染
-│   │   └── WelcomeScreen.tsx   # 新聊天欢迎界面
+│   │   ├── streamingMarkdown.ts # 流式 Markdown 增量渲染
+│   │   ├── ThinkingPanel.tsx   # 思考过程可折叠面板
+│   │   ├── ToolResultBlock.tsx # 工具执行结果展示
+│   │   ├── ToolTraceBlocks.tsx # 工具调用链路展示
+│   │   ├── TurnSection.tsx     # Agent 回合分隔标记
+│   │   ├── WelcomeScreen.tsx   # 新聊天欢迎界面
+│   │   └── animations.ts       # 聊天动画定义
 │   │
 │   ├── Layout/
 │   │   ├── AppLayout.tsx       # 布局容器
@@ -522,7 +564,8 @@ src/
 │   ├── common/
 │   │   ├── Flex.tsx            # 布局原语
 │   │   ├── SettingsModal.tsx   # 带选项卡导航的设置弹窗
-│   │   └── ApiConfigBanner.tsx # API key 未配置提示横幅
+│   │   ├── ApiConfigBanner.tsx # API key 未配置提示横幅
+│   │   └── FoldDivider.tsx     # 消息折叠分隔线
 │   │
 │   └── Trace/                  # ✅ Trace 窗口子系统
 │       ├── TracePanel.tsx      # Trace 主面板（停靠/窗口控制、回合列表、滚动）
@@ -533,6 +576,7 @@ src/
 │       ├── PromptView.tsx      # Prompt 检查器
 │       ├── ThinkingView.tsx    # 思考过程检查器
 │       ├── ResponseView.tsx    # 响应检查器
+│       ├── ToolView.tsx        # 工具调用检查器
 │       └── useCopyFeedback.ts  # 复制反馈 hook
 │
 │  以下模块为规划中，尚未实现:
@@ -549,12 +593,23 @@ src/
 
 ├── styles/
 │   ├── theme.ts                # 设计系统 token（深色/浅色主题）
+│   ├── mixins.ts               # 样式混入工具
 │   ├── GlobalStyle.ts          # CSS 重置 + 全局样式
 │   └── styled.d.ts             # styled-components 主题类型增强
+
+├── utils/
+│   ├── cn.ts                    # className 拼接工具
+│   ├── foldUtils.ts            # 折叠判断/状态工具
+│   ├── traceUtils.ts           # Trace 数据处理工具
+│   ├── turns.ts                # 回合结构解析工具
+│   └── formatThinkingDuration.ts # 思考耗时格式化
 
 ├── i18n/
 │   ├── index.ts                # 导出中文翻译
 │   └── zh-CN.ts                # 中文（简体）翻译字符串
+
+├── test/
+│   └── setup.ts                # Vitest 测试配置
 ```
 
 ---
@@ -579,24 +634,24 @@ src/
 
 **验证:** 用户发送消息 → Agent 自动进入 Think→Act→Observe 循环（当前因无注册工具，无 tool_use 时会直接返回文本响应）
 
-### Phase 2: 工具系统完善 (P0) — ⚠️ 框架完成，具体工具待实现
+### Phase 2: 工具系统完善 (P0) — ✅ 核心工具已实现，安全增强待完成
 
 **目标:** 实现核心开发工具 + 安全默认 + 并发分区
 
-- [x] `Tool` trait — `name()`、`description()`、`parameters_schema()`、`execute()`
-- [x] `ToolRegistry` — 注册/查找/生成 LLM 工具定义
-- [x] `ToolExecutor` — 带超时（tokio::time::timeout）和输出字符截断
-- [ ] **`ToolMeta` + `Default` 安全默认** — fail-closed 原则：`is_concurrency_safe` 和 `is_read_only` 默认 `false`
-- [ ] **`partition_tool_calls()` 并发安全分区** — 只读工具合并并行，写入工具串行
-- [ ] **三层条件注册** — `cfg(feature)` 编译期 DCE → env var 加载期 → `is_enabled()` 运行时
-- [ ] **工具级权限检查** — `validate_input()` + `check_permissions()` 委托给具体工具实现
-- [ ] **结构化输出截断** — 头尾保留 + 中间截断信息（替代简单字符丢弃）
-- [ ] `read_file` / `write_file` / `edit_file` — 文件操作（含 `search_hint`、`aliases`）
-- [ ] `grep` / `glob` / `list_directory` — 代码搜索
-- [ ] `bash` / `powershell` — Shell 执行（含命令语义分析 + AST 安全检查）
-- [ ] `Sandbox` — 路径白名单/命令黑名单
+- [x] `Tool` trait — `name()`、`description()`、`parameters_schema()`、`execute()` + `search_hint`、`aliases`
+- [x] `ToolRegistry` — 注册/查找/生成 LLM 工具定义 + 三层条件注册
+- [x] `ToolExecutor` — 带超时（tokio::time::timeout）+ `partition_tool_calls()` 并发安全分区 + 结构化输出截断
+- [x] `ToolMeta` + `Default` 安全默认 — fail-closed 原则：`is_concurrency_safe` 和 `is_read_only` 默认 `false`
+- [x] `read_file` / `write_file` / `edit_file` — 文件操作（含行范围支持、图片/PDF 读取）
+- [x] `grep` / `glob` / `list_dir` — 代码搜索
+- [x] `bash` / `powershell` — Shell 执行（含平台适配 `#[cfg]`）
+- [x] `Sandbox` — 路径白名单/命令黑名单/正则模式（`SandboxConfig` 结构已定义）
+- [ ] **Agent Loop 集成 `execute_batch()`** — 当前 Loop 仍逐个串行执行工具，未使用并发分区
+- [ ] **工具级权限检查** — `validate_input()` + `check_permissions()` 已在 trait 定义，但 Agent Loop 未调用
+- [ ] **`web_search` / `web_fetch`** — 网络工具未实现
+- [ ] **`delete_file`** — 文件删除工具未实现
 
-**验证:** Agent 可以读文件、搜索代码、执行简单命令；只读工具并发执行、写入工具串行执行
+**验证:** Agent 可以读文件、搜索代码、执行 Shell 命令；ToolExecutor 已支持并发分区和结构化截断（框架就绪，Loop 中待切换）
 
 ### Phase 3: 权限 + 上下文 + 内置命令 (P1) — ❌ 未开始
 
@@ -605,7 +660,6 @@ src/
 - [ ] `PermissionManager` + 前端权限弹窗
 - [ ] `ContextManager` + Token 计数
 - [ ] 上下文裁剪策略
-- [ ] `PromptEngine` — 可配置的 System Prompt
 - [ ] `CommandRegistry` + `/help`、`/clear`、`/compact`、`/diff` 等内置命令
 - [ ] 前端命令自动补全
 
@@ -662,7 +716,7 @@ src/
 
 **目标:** 生产可用性
 
-- [ ] 并行工具执行（无依赖时）
+- [ ] 切换 Agent Loop 到 `execute_batch()` 并行工具执行（ToolExecutor 已就绪）
 - [ ] 内存与 CPU 优化
 - [ ] 错误恢复与重试
 - [ ] 会话恢复（崩溃后断点续跑）
@@ -685,6 +739,8 @@ src/
 | Token 计数      | tiktoken-rs + 回退估算      | 精确度 vs 依赖复杂度平衡                           |
 | 消息格式        | Anthropic ContentBlock 格式 | 原生支持 text/image/tool_use/tool_result           |
 | 状态管理        | Rust 内存 + 前端 Zustand    | 后端持权威状态，前端镜像展示                       |
+| 后端模块组织    | 按功能域拆分子目录          | commands/models/window 各自独立，单一导出; <100 行 lib.rs |
+| 事件名称管理    | `&str` 常量集中定义         | `events.rs` 单一定义源，避免魔法字符串分散          |
 
 ---
 

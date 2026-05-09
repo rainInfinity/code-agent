@@ -72,7 +72,10 @@
       "PowerShell(\"OK\")",
       "Bash(Get-ChildItem -Recurse -Path \"f:\\\\project\\\\code-agent\\\\src-tauri\\\\src\" -Name)",
       "Bash(Sort-Object)",
-      "PowerShell(Get-ChildItem 'f:\\\\project\\\\code-agent\\\\openspec\\\\changes' -Directory | Where-Object { $_.Name -ne 'archive' } | Select-Object -ExpandProperty Name)"
+      "PowerShell(Get-ChildItem 'f:\\\\project\\\\code-agent\\\\openspec\\\\changes' -Directory | Where-Object { $_.Name -ne 'archive' } | Select-Object -ExpandProperty Name)",
+      "Bash(Get-ChildItem -Recurse src-tauri/src -Name -File)",
+      "PowerShell(Get-ChildItem -Recurse src-tauri/src -File | ForEach-Object { $_.FullName.Substring\\($_.FullName.IndexOf\\('src-tauri\\\\src\\\\'\\) + 12\\) } | Sort-Object)",
+      "PowerShell(Get-ChildItem -Recurse src -File | ForEach-Object { $_.FullName.Substring\\($_.FullName.IndexOf\\('src\\\\'\\) + 4\\) } | Sort-Object)"
     ],
     "additionalDirectories": [
       "F:\\project\\code-agent\\openspec\\changes\\multi-provider-api-config\\specs",
